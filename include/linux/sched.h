@@ -78,7 +78,7 @@ struct tss_struct {
 };
 
 struct task_struct {
-/* these are hardcoded - don't touch */
+/* these are hardcoded - don't touch */ // 由于 system_call.s 中会使用以下字段的字节偏移量，所以它们的顺序不能随意调整
 	long state;	/* -1 unrunnable, 0 runnable, >0 stopped */
 	long counter;
 	long priority;
@@ -154,8 +154,11 @@ extern void wake_up(struct task_struct ** p);
  */
 #define FIRST_TSS_ENTRY 4
 #define FIRST_LDT_ENTRY (FIRST_TSS_ENTRY+1)
+ // 第 n 个 TSS 段在 GDT 的位置（起始字节）
+ // 每个段描述符占据 8 个字节，而第一个 TSS 段描述符是 GDT 表中的第 FIRST_TSS_ENTRY 个，因此有 FIRST_TSS_ENTRY<<3
+ // 每个任务会使用一个 TSS 和 LDT，因此相邻的 TSS 的间距为 n * 2 * 8 == n << 4 个字节
 #define _TSS(n) ((((unsigned long) n)<<4)+(FIRST_TSS_ENTRY<<3))
-#define _LDT(n) ((((unsigned long) n)<<4)+(FIRST_LDT_ENTRY<<3))
+#define _LDT(n) ((((unsigned long) n)<<4)+(FIRST_LDT_ENTRY<<3)) // LDT 的位置查找方式和 TSS 的类似
 #define ltr(n) __asm__("ltr %%ax"::"a" (_TSS(n)))
 #define lldt(n) __asm__("lldt %%ax"::"a" (_LDT(n)))
 #define str(n) \
@@ -171,17 +174,18 @@ __asm__("str %%ax\n\t" \
  * tha math co-processor latest.
  */
 #define switch_to(n) {\
-struct {long a,b;} __tmp; \
-__asm__("cmpl %%ecx,current\n\t" \
-	"je 1f\n\t" \
-	"movw %%dx,%1\n\t" \
-	"xchgl %%ecx,current\n\t" \
-	"ljmp *%0\n\t" \
+struct {long a,b;} __tmp; \ // __tmp.a 存放 32 位偏移（无用，忽略），__tmp.b 存放段选择符（在 GDT 的位置（起始字节））
+__asm__("cmpl %%ecx,current\n\t" \ // 判断新任务 n 是否为当前任务
+	"je 1f\n\t" \ // 如果是当前任务，则跳转到标号 1 退出
+	"movw %%dx,%1\n\t" \ // 将状态段选择子 _TSS(n) 赋值给 __tmp.b
+	"xchgl %%ecx,current\n\t" \ // 交换 ecx 和 current 的内容，交换后 ecx 指向当前进程，current 指向将要切换过去的进程
+    // ljmp 需要传递给它 64 位的数据，%0 代表 __tmp.a（虽然它没用）
+	"ljmp *%0\n\t" \ // 长跳到段选择符会造成任务切换，切换后后面的代码不会执行了，只有等到重新切换回来才会继续执行（怎么找回来下一行代码的地址？tss吧里面有cs,eip）
 	"cmpl %%ecx,last_task_used_math\n\t" \
 	"jne 1f\n\t" \
 	"clts\n" \
 	"1:" \
-	::"m" (*&__tmp.a),"m" (*&__tmp.b), \
+	::"m" (*&__tmp.a),"m" (*&__tmp.b), \ // 不知道为什么要先取地址再取值？
 	"d" (_TSS(n)),"c" ((long) task[n])); \
 }
 

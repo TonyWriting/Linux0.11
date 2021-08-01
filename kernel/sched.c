@@ -55,7 +55,7 @@ union task_union {
 	char stack[PAGE_SIZE];
 };
 
-static union task_union init_task = {INIT_TASK,};
+static union task_union init_task = {INIT_TASK,}; // 进程 0 的 PCB 与内核栈
 
 long volatile jiffies=0;
 long startup_time=0;
@@ -64,7 +64,7 @@ struct task_struct *last_task_used_math = NULL;
 
 struct task_struct * task[NR_TASKS] = {&(init_task.task), };
 
-long user_stack [ PAGE_SIZE>>2 ] ;
+long user_stack [ PAGE_SIZE>>2 ] ; // PAGE_SIZE == 4096
 
 struct {
 	long * a;
@@ -124,7 +124,7 @@ void schedule(void)
 	while (1) {
 		c = -1;
 		next = 0;
-		i = NR_TASKS;
+		i = NR_TASKS; // linux0.11 规定最大的任务数为 NR_TASKS(64)
 		p = &task[NR_TASKS];
 		while (--i) {
 			if (!*--p)
@@ -138,6 +138,8 @@ void schedule(void)
 				(*p)->counter = ((*p)->counter >> 1) +
 						(*p)->priority;
 	}
+    // 切换到另一个任务后，switch_to 同时实现指令流和内核栈的切换，即其后半部分代码不会执行
+    // schedule 的右括号更不会执行，直到被切换回来才会继续执行
 	switch_to(next);
 }
 

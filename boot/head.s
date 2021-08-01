@@ -112,6 +112,7 @@ setup_gdt:
  * I put the kernel page tables right after the page directory,
  * using 4 of them to span 16 Mb of physical memory. People with
  * more than 16MB will have to expand this.
+ * 设定支持的最大物理内存长度为 16MB，但是只有 2MB 完全也能运行 Linux 0.11系统。
  */
 .org 0x1000
 pg0:
@@ -233,8 +234,9 @@ gdt_descr:
 	.align 8
 idt:	.fill 256,8,0		# idt is uninitialized
 
+# gdt 中有 1 个内核代码与数据段，252 个 LDT 和 TSS。但是最大任务书不是 252 / 2 == 126，而是设定的 NR_TASKS == 64
 gdt:	.quad 0x0000000000000000	/* NULL descriptor */
-	.quad 0x00c09a0000000fff	/* 16Mb */
-	.quad 0x00c0920000000fff	/* 16Mb */
+	.quad 0x00c09a0000000fff	/* 16Mb */ # 内核代码段，段基址是 0x00000000，因此内核中线性地址 == 逻辑地址
+	.quad 0x00c0920000000fff	/* 16Mb */ # 内核数据，段基址也是 0x00000000；同时内核、各任务代码段和自身的数据段的段基址和段限长都一样，完全重叠
 	.quad 0x0000000000000000	/* TEMPORARY - don't use */
-	.fill 252,8,0			/* space for LDT's and TSS's etc */
+	.fill 252,8,0			/* space for LDT's and TSS's etc */ # 每个任务的 TSS 段保存在该任务的 task_struct 中（如何实现）

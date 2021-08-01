@@ -74,13 +74,16 @@ bad_sys_call:
 	iret
 .align 2
 reschedule:
+    // 注意这里将 ret_from_sys_call 压栈，是五段论的最后一步
+    // schedule 是 C 函数，当它切换回来后，会继续执行 schedule 直到它的右括号
+    // 然后 RET 返回，就会将 ret_from_sys_call 弹栈，跳转到此处执行
 	pushl $ret_from_sys_call
 	jmp schedule
 .align 2
 system_call:
 	cmpl $nr_system_calls-1,%eax
 	ja bad_sys_call
-	push %ds
+	push %ds // 已经是内核栈了
 	push %es
 	push %fs
 	pushl %edx
@@ -91,13 +94,13 @@ system_call:
 	mov %dx,%es
 	movl $0x17,%edx		# fs points to local data space
 	mov %dx,%fs
-	call sys_call_table(,%eax,4)
-	pushl %eax
-	movl current,%eax
-	cmpl $0,state(%eax)		# state
+	call sys_call_table(,%eax,4) // 该函数会修改 eax，作为返回值。为什么会将 eax 作为返回值呢？这是因为该函数为 C 函数，编译器会生成相应汇编代码，即自动帮你做了
+	pushl %eax // 返回值压栈
+	movl current,%eax // current 是指向当前任务 task_struct 的指针，全局变量，将它赋给 eax
+	cmpl $0,state(%eax)		# state，0 代表进程为阻塞，则会调度
 	jne reschedule
-	cmpl $0,counter(%eax)		# counter
-	je reschedule
+	cmpl $0,counter(%eax)		# counter，0 代表进程的时间片用光，也会引起调度
+	je reschedule # 不满足条件（该行的条件是当前任务的 counter 为 0)，会顺序往下执行
 ret_from_sys_call:
 	movl current,%eax		# task[0] cannot have signals
 	cmpl task,%eax
@@ -116,9 +119,9 @@ ret_from_sys_call:
 	movl %ebx,signal(%eax)
 	incl %ecx
 	pushl %ecx
-	call do_signal
-	popl %eax
-3:	popl %eax
+	call do_signal // 在内核态返回用户态前，会查找进程的信号队列中是否有信号没有处理，如果有会调用 do_signal 处理信号
+	popl %eax // 为什么要弹出 eax？因为前面 push 了，这是返回值
+3:	popl %eax // 将一堆用户态的寄存器弹出栈，和 system_call 的压栈是相反的过程
 	popl %ebx
 	popl %ecx
 	popl %edx
@@ -205,17 +208,19 @@ sys_execve:
 	ret
 
 .align 2
-sys_fork:
-	call find_empty_process
-	testl %eax,%eax
-	js 1f
+sys_fork: // 汇编非 C 函数
+	call find_empty_process // 分配 pid 与找空的 task_struct 存放新进程
+	testl %eax,%eax // Test对两个参数(目标，源)执行AND逻辑操作，并根据结果设置标志寄存器，但不会覆盖寄存器原有内容
+	js 1f // 为负则跳转到 1 处
 	push %gs
-	pushl %esi
+	pushl %esi // pushl 压入双字，即 4 字节 32 位的数据
 	pushl %edi
 	pushl %ebp
-	pushl %eax
-	call copy_process
-	addl $20,%esp
+	pushl %eax // 此时 eax 是 find_empty_process 的返回值了（不再是 system_call 的系统调用号，而是 tasks 中空闲的 task_sturct 的标号）
+    // copy_process 是个 C 函数，它需要一堆入参，从哪里来呢？
+    // 显然是从之前往内核栈中 push 的那些父进程的寄存器，注意越后入栈的作为越左边的入参。
+	call copy_process // 这里会改变 eax（作为 C 函数的返回值）
+	addl $20,%esp // 栈顶回退 20 个字节，从而 esi, edi, ebp, eax 都不会在内核栈中
 1:	ret
 
 hd_interrupt:

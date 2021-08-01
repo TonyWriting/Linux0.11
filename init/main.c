@@ -101,6 +101,7 @@ static long main_memory_start = 0;
 
 struct drive_info { char dummy[32]; } drive_info;
 
+// head.s 的 iret 使得 CPU 的执行跳转到这里
 void main(void)		/* This really IS void, no error here. */
 {			/* The startup routine assumes (well, ...) this */
 /*
@@ -109,7 +110,7 @@ void main(void)		/* This really IS void, no error here. */
  */
  	ROOT_DEV = ORIG_ROOT_DEV;
  	drive_info = DRIVE_INFO;
-	memory_end = (1<<20) + (EXT_MEM_K<<10);
+	memory_end = (1<<20) + (EXT_MEM_K<<10); // 开始内存初始化
 	memory_end &= 0xfffff000;
 	if (memory_end > 16*1024*1024)
 		memory_end = 16*1024*1024;
@@ -124,18 +125,18 @@ void main(void)		/* This really IS void, no error here. */
 	main_memory_start += rd_init(main_memory_start, RAMDISK*1024);
 #endif
 	mem_init(main_memory_start,memory_end);
-	trap_init();
-	blk_dev_init();
-	chr_dev_init();
-	tty_init();
-	time_init();
-	sched_init();
-	buffer_init(buffer_memory_end);
-	hd_init();
-	floppy_init();
-	sti();
-	move_to_user_mode();
-	if (!fork()) {		/* we count on this going ok */
+	trap_init(); // 中断向量初始化
+	blk_dev_init(); // 块设备初始化
+	chr_dev_init(); // 字符设备初始化（保留接口，未实现）
+	tty_init(); // 终端初始化
+	time_init(); // 计时初始化
+	sched_init(); // 调度程序初始化
+	buffer_init(buffer_memory_end); // 缓冲区初始化
+	hd_init(); // 硬盘初始化
+	floppy_init(); // 软盘初始化
+	sti(); // 开中断
+	move_to_user_mode(); // 切换到用户模式，之后内核要工作也需要通过系统调用
+	if (!fork()) {		/* we count on this going ok */ // 生成 1 号进程
 		init();
 	}
 /*
@@ -145,7 +146,7 @@ void main(void)		/* This really IS void, no error here. */
  * can run). For task0 'pause()' just means we go check if some other
  * task can run, and if not we return here.
  */
-	for(;;) pause();
+	for(;;) pause(); // 0 号进程一直死循环
 }
 
 static int printf(const char *fmt, ...)

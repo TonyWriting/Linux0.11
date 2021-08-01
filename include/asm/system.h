@@ -2,7 +2,7 @@
 __asm__ ("movl %%esp,%%eax\n\t" \
 	"pushl $0x17\n\t" \
 	"pushl %%eax\n\t" \
-	"pushfl\n\t" \
+	"pushfl\n\t" \ // 将 EFLAGS 寄存器的全部内容压入堆栈
 	"pushl $0x0f\n\t" \
 	"pushl $1f\n\t" \
 	"iret\n" \

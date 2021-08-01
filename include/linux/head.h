@@ -3,10 +3,10 @@
 
 typedef struct desc_struct {
 	unsigned long a,b;
-} desc_table[256];
+} desc_table[256]; // 段描述符（8个字节）
 
 extern unsigned long pg_dir[1024];
-extern desc_table idt,gdt;
+extern desc_table idt,gdt; // 外部全局变量，定义在 head.s 中
 
 #define GDT_NUL 0
 #define GDT_CODE 1
