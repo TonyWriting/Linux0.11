@@ -1,0 +1,10 @@
+# makefile output
+*.o
+*.a
+Image
+System.map
+tools/build
+tools/system
+boot/bootsect
+boot/setup
+kernel/chr_drv/keyboard.s
