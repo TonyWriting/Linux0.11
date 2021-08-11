@@ -5,7 +5,7 @@
  */
 
 #define __LIBRARY__
-#include <unistd.h>
+#include <unistd.h> // .h 头文件的默认目录为 include/
 #include <time.h>
 
 /*
@@ -20,6 +20,7 @@
  * won't be any messing with the stack from main(), but we define
  * some others too.
  */
+ // inline 有两个作用：（1）减少函数调用开销 （2）在创建任务 1 之前保持任务 0 的用户栈干净，因为任务 1 在内核空间执行，没有写时复制
 static inline _syscall0(int,fork)
 static inline _syscall0(int,pause)
 static inline _syscall1(int,setup,void *,BIOS)
@@ -134,9 +135,9 @@ void main(void)		/* This really IS void, no error here. */
 	buffer_init(buffer_memory_end); // 缓冲区初始化
 	hd_init(); // 硬盘初始化
 	floppy_init(); // 软盘初始化
-	sti(); // 开中断
-	move_to_user_mode(); // 切换到用户模式，之后内核要工作也需要通过系统调用
-	if (!fork()) {		/* we count on this going ok */ // 生成 1 号进程
+	sti(); // 开中断（在此之前中断一直是关闭的）
+	move_to_user_mode();  // 切换到用户模式，之后就是用户态的任务 0 了。它访问内核也要经过系统调用
+	if (!fork()) {		/* we count on this going ok */ // 用户态的进程 0 立刻 fork 出 1 号进程（init 进程）
 		init();
 	}
 /*
@@ -146,7 +147,9 @@ void main(void)		/* This really IS void, no error here. */
  * can run). For task0 'pause()' just means we go check if some other
  * task can run, and if not we return here.
  */
-	for(;;) pause(); // 0 号进程一直死循环
+ // 0 号进程一直死循环, pause 是个系统调用的 API（因为任务 0 是用户态进程，访问内核需要系统调用）
+ // pause API 在 main.c 中的 static inline _syscall0(int,pause) 宏生成
+	for(;;) pause();
 }
 
 static int printf(const char *fmt, ...)
@@ -170,22 +173,29 @@ void init(void)
 {
 	int pid,i;
 
-	setup((void *) &drive_info);
+	setup((void *) &drive_info); // setup 为系统调用，读取磁盘参数，加载虚拟盘（如果有的话）和安装根文件系统
+	// 以读写方式打开终端设备 /dev/tty0（对应终端控制台）。第一次打开文件会产生文件描述符（也称句柄号）0 号（stdin）。并将其与 /dev/tty0 关联
+	// (void) 表示强制函数无需返回值
 	(void) open("/dev/tty0",O_RDWR,0);
-	(void) dup(0);
-	(void) dup(0);
+	(void) dup(0); // 复制文件描述符 0，产生文件描述符 1 号（stdout），它也和 /dev/tty0 关联
+	(void) dup(0); // 复制文件描述符 0，产生文件描述符 2 号（stderr），它也和 /dev/tty0 关联
+
+	// 利用上述描述符在终端显示系统信息，即打印缓冲区块数，总字节数和主内存区空闲内存字节数
 	printf("%d buffers = %d bytes buffer space\n\r",NR_BUFFERS,
 		NR_BUFFERS*BLOCK_SIZE);
 	printf("Free mem: %d bytes\n\r",memory_end-main_memory_start);
-	if (!(pid=fork())) {
-		close(0);
-		if (open("/etc/rc",O_RDONLY,0))
+
+	if (!(pid=fork())) { // 创建进程 2
+		close(0); // 关闭文件描述符 0
+		if (open("/etc/rc",O_RDONLY,0)) // 打开文件 /etc/rc，并将标准输入 stdin 重定向到 /etc/rc 文件，从而会执行 /etc/rc 中的命令
 			_exit(1);
+		// 将自身替换 /bin/sh 程序（即 shell），从而执行 /etc/rc 文件中的命令
+		// sh 的运行方式是非交互式的，因此执行完命令后立刻退出，进程 2 结束
 		execve("/bin/sh",argv_rc,envp_rc);
-		_exit(2);
+		_exit(2); // execve 执行失败则进程 2 退出
 	}
 	if (pid>0)
-		while (pid != wait(&i))
+		while (pid != wait(&i)) // 进程 0 等待进程 2 结束，i 存放返回状态信息
 			/* nothing */;
 	while (1) {
 		if ((pid=fork())<0) {
@@ -193,18 +203,22 @@ void init(void)
 			continue;
 		}
 		if (!pid) {
-			close(0);close(1);close(2);
+			close(0);close(1);close(2); // 关闭之前遗留的全部句柄
+			// 创建新的会话期
+			// 会话期是一个或多个进程组的集合；进程组是一个或多个进程的集合
+			// 通常情况下，用户登录后执行的所有程序都属于一个会话期，其登录 shell 是会话期的首进程，它使用的终端是会话期的控制终端
+			// 在退出登录（logout）时，所有属于该会话期的进程都会被终止
 			setsid();
-			(void) open("/dev/tty0",O_RDWR,0);
-			(void) dup(0);
-			(void) dup(0);
-			_exit(execve("/bin/sh",argv,envp));
+			(void) open("/dev/tty0",O_RDWR,0); // 重新打开 /dev/tty0 作为 stdin
+			(void) dup(0); // 复制产生 stdout
+			(void) dup(0); // 复制产生 stderr
+			_exit(execve("/bin/sh",argv,envp)); // 以登录 shell 方式再次执行程序 /bin/sh，以创建用户交互 shell 环境。用户就能正常使用 Linux 命令行环境了
 		}
 		while (1)
-			if (pid == wait(&i))
+			if (pid == wait(&i)) // 等待子进程结束，如果用户在命令行执行了 exit 或 logout 命令，那么会再次进入无限循环中
 				break;
 		printf("\n\rchild %d died with code %04x\n\r",pid,i);
-		sync();
+		sync(); // 同步操作，刷新缓冲区
 	}
 	_exit(0);	/* NOTE! _exit, not exit() */
 }

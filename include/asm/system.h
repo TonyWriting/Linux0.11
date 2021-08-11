@@ -1,11 +1,11 @@
 #define move_to_user_mode() \
 __asm__ ("movl %%esp,%%eax\n\t" \
-	"pushl $0x17\n\t" \
-	"pushl %%eax\n\t" \
+	"pushl $0x17\n\t" \ // 0x17 是指 LDT 表中的数据段选择符
+	"pushl %%eax\n\t" \ // esp 依然是内核程序使用的 user_stack 原本的位置值
 	"pushfl\n\t" \ // 将 EFLAGS 寄存器的全部内容压入堆栈
-	"pushl $0x0f\n\t" \
-	"pushl $1f\n\t" \
-	"iret\n" \
+	"pushl $0x0f\n\t" \ // 0x17 是指 LDT 表中的代码段选择符
+	"pushl $1f\n\t" \ // 将 iret 的下一条指令压栈
+	"iret\n" \ // 会将上面五个弹出，继续向下执行代码，但特权级从 0 变成 3，变成了用户程序（任务 0）
 	"1:\tmovl $0x17,%%eax\n\t" \
 	"movw %%ax,%%ds\n\t" \
 	"movw %%ax,%%es\n\t" \
@@ -50,7 +50,7 @@ __asm__ ("movw %%dx,%%ax\n\t" \
 		((limit) & 0x0ffff); }
 
 #define _set_tssldt_desc(n,addr,type) \
-__asm__ ("movw $104,%1\n\t" \
+__asm__ ("movw $104,%1\n\t" \ // 任务段和局部描述符表段的段限长都是 104 个字节
 	"movw %%ax,%2\n\t" \
 	"rorl $16,%%eax\n\t" \
 	"movb %%al,%3\n\t" \
@@ -62,6 +62,7 @@ __asm__ ("movw $104,%1\n\t" \
 	 "m" (*(n+5)), "m" (*(n+6)), "m" (*(n+7)) \
 	)
 
-#define set_tss_desc(n,addr) _set_tssldt_desc(((char *) (n)),((int)(addr)),"0x89")
-#define set_ldt_desc(n,addr) _set_tssldt_desc(((char *) (n)),((int)(addr)),"0x82")
+// n 是段描述符的指针，addr 是段描述符中的段基址
+#define set_tss_desc(n,addr) _set_tssldt_desc(((char *) (n)),((int)(addr)),"0x89") // 0x89 是任务段的类型
+#define set_ldt_desc(n,addr) _set_tssldt_desc(((char *) (n)),((int)(addr)),"0x82") // 0x82 是局部描述符表段的类型
 

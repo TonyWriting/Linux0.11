@@ -40,7 +40,7 @@ void buffer_init(long buffer_end);
 #define Z_MAP_SLOTS 8
 #define SUPER_MAGIC 0x137F
 
-#define NR_OPEN 20
+#define NR_OPEN 20 // 单个进程可分配的最大文件数
 #define NR_INODE 32
 #define NR_FILE 64
 #define NR_SUPER 8

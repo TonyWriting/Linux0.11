@@ -94,8 +94,8 @@ system_call:
 	mov %dx,%es
 	movl $0x17,%edx		# fs points to local data space
 	mov %dx,%fs
-	call sys_call_table(,%eax,4) // 该函数会修改 eax，作为返回值。为什么会将 eax 作为返回值呢？这是因为该函数为 C 函数，编译器会生成相应汇编代码，即自动帮你做了
-	pushl %eax // 返回值压栈
+	call sys_call_table(,%eax,4) // 该函数会修改 eax，作为返回值。为什么会将 eax 作为返回值呢？这是因为该函数为 C 函数（即使不是，它里面也会调用 C 函数，比如 sys_fork），编译器会生成相应汇编代码，即自动帮你做了
+	pushl %eax // 将 sys_xxx 内核函数的返回值压栈
 	movl current,%eax // current 是指向当前任务 task_struct 的指针，全局变量，将它赋给 eax
 	cmpl $0,state(%eax)		# state，0 代表进程为阻塞，则会调度
 	jne reschedule
@@ -109,16 +109,16 @@ ret_from_sys_call:
 	jne 3f
 	cmpw $0x17,OLDSS(%esp)		# was stack segment = 0x17 ?
 	jne 3f
-	movl signal(%eax),%ebx
-	movl blocked(%eax),%ecx
-	notl %ecx
-	andl %ebx,%ecx
-	bsfl %ecx,%ecx
+	movl signal(%eax),%ebx # 取信号位图到 ebx，每一位代表一种信号，共 32 个信号
+	movl blocked(%eax),%ecx # 取屏蔽位图到 ecx
+	notl %ecx # 按位取反
+	andl %ebx,%ecx # 对 ebx 和 ecx 进行与运算
+	bsfl %ecx,%ecx # 从低位开始扫描，看是否有 1 的位。如果有则 ecx 保留该位的偏移量（0 - 31)
 	je 3f
-	btrl %ecx,%ebx
+	btrl %ecx,%ebx # 将 ebx 中偏移量为 ecx 的位清零
 	movl %ebx,signal(%eax)
-	incl %ecx
-	pushl %ecx
+	incl %ecx # 由于信号类型从 1 开始，因此要将 ecx 中的偏移量加 1
+	pushl %ecx # 将 ecx 作为入参传递给 do_signal
 	call do_signal // 在内核态返回用户态前，会查找进程的信号队列中是否有信号没有处理，如果有会调用 do_signal 处理信号
 	popl %eax // 为什么要弹出 eax？因为前面 push 了，这是返回值
 3:	popl %eax // 将一堆用户态的寄存器弹出栈，和 system_call 的压栈是相反的过程
@@ -176,7 +176,7 @@ device_not_available:
 	ret
 
 .align 2
-timer_interrupt:
+timer_interrupt: # 通过一片 8253 进行系统定时，每隔 10ms 发出一个时钟中断
 	push %ds		# save ds,es and put kernel data space
 	push %es		# into them. %fs is used by _system_call
 	push %fs
@@ -189,7 +189,7 @@ timer_interrupt:
 	mov %ax,%es
 	movl $0x17,%eax
 	mov %ax,%fs
-	incl jiffies
+	incl jiffies # 增加全局变量时钟滴答数
 	movb $0x20,%al		# EOI to interrupt controller #1
 	outb %al,$0x20
 	movl CS(%esp),%eax
@@ -212,15 +212,17 @@ sys_fork: // 汇编非 C 函数
 	call find_empty_process // 分配 pid 与找空的 task_struct 存放新进程
 	testl %eax,%eax // Test对两个参数(目标，源)执行AND逻辑操作，并根据结果设置标志寄存器，但不会覆盖寄存器原有内容
 	js 1f // 为负则跳转到 1 处
-	push %gs
+	push %gs // 压入 2 字节？不是，虽然 gs 是 16 位的，但是压栈会压入 4 个字节，其高 2 个字节为空
 	pushl %esi // pushl 压入双字，即 4 字节 32 位的数据
 	pushl %edi
 	pushl %ebp
-	pushl %eax // 此时 eax 是 find_empty_process 的返回值了（不再是 system_call 的系统调用号，而是 tasks 中空闲的 task_sturct 的标号）
+	pushl %eax // 此时 eax 是 C 函数 find_empty_process 的返回值了（不再是 system_call 的系统调用号，而是 tasks 中空闲的 task_sturct 的标号）
     // copy_process 是个 C 函数，它需要一堆入参，从哪里来呢？
-    // 显然是从之前往内核栈中 push 的那些父进程的寄存器，注意越后入栈的作为越左边的入参。
+    // 显然是从之前往内核栈中 push 的那些父进程的寄存器，注意越后入栈的作为 C 函数越左边的入参。
+	// call == （push 下一条指令地址） + （jmp 目标函数地址）；ret == pop %eip（将当前栈内容 esp 赋给 eip）
+	// 在 32 位 C 函数调用中，一般会通过栈帧结构（ebp + esp）维护函数调用栈，从而退出函数的时候，函数栈能够恢复成原本未进入被调函数的样子
 	call copy_process // 这里会改变 eax（作为 C 函数的返回值）
-	addl $20,%esp // 栈顶回退 20 个字节，从而 esi, edi, ebp, eax 都不会在内核栈中
+	addl $20,%esp // 栈顶回退 20 个字节。为什么是 20 个字节呢？gs（16 位段寄存器，但用了 4 个字节存储） + esi + edi + ebp + eax == 20 个字节
 1:	ret
 
 hd_interrupt:

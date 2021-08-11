@@ -102,8 +102,11 @@ static void tell_father(int pid)
 int do_exit(long code)
 {
 	int i;
+	// 首先释放当前进程代码段和数据段所占的内存页
 	free_page_tables(get_base(current->ldt[1]),get_limit(0x0f));
 	free_page_tables(get_base(current->ldt[2]),get_limit(0x17));
+	// 如果当前进程有子进程，就将子进程的 father 变为 init 进程
+	// 如果该子进程处于僵死 TASK_ZOMBIE 状态，则向 init 进程发送子进程终止信号 SIGCHLD
 	for (i=0 ; i<NR_TASKS ; i++)
 		if (task[i] && task[i]->father == current->pid) {
 			task[i]->father = 1;
@@ -111,6 +114,7 @@ int do_exit(long code)
 				/* assumption task[1] is always init */
 				(void) send_sig(SIGCHLD, task[1], 1);
 		}
+	// 关闭当前进程打开的全部文件
 	for (i=0 ; i<NR_OPEN ; i++)
 		if (current->filp[i])
 			sys_close(i);
@@ -128,7 +132,7 @@ int do_exit(long code)
 		kill_session();
 	current->state = TASK_ZOMBIE;
 	current->exit_code = code;
-	tell_father(current->father);
+	tell_father(current->father); // 通知父进程，即向父进程发送信号 SIGCHLD 告知当前进程将终止
 	schedule();
 	return (-1);	/* just to suppress warnings */
 }
@@ -181,7 +185,7 @@ repeat:
 		}
 	}
 	if (flag) {
-		if (options & WNOHANG)
+		if (options & WNOHANG) // waitpid 传进来的 options 为 0，因此不会立即返回
 			return 0;
 		current->state=TASK_INTERRUPTIBLE;
 		schedule();

@@ -7,7 +7,7 @@
 #define _HIGH(v)	( ((v) >> 8) & 0377)
 
 /* options for waitpid, WUNTRACED not supported */
-#define WNOHANG		1
+#define WNOHANG		1 // 拆解为 W NO HANG，即不阻塞模式
 #define WUNTRACED	2
 
 #define WIFEXITED(s)	(!((s)&0xFF)

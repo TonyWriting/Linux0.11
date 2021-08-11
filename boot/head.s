@@ -21,7 +21,7 @@ startup_32:
 	mov %ax,%es
 	mov %ax,%fs
 	mov %ax,%gs
-	lss stack_start,%esp
+	lss stack_start,%esp // 将 0x10 赋值给 ss，将 user_task 数组的末尾元素的地址赋值给 esp。这是内核程序使用的堆栈
 	call setup_idt
 	call setup_gdt
 	movl $0x10,%eax		# reload all the segment registers
@@ -239,4 +239,4 @@ gdt:	.quad 0x0000000000000000	/* NULL descriptor */
 	.quad 0x00c09a0000000fff	/* 16Mb */ # 内核代码段，段基址是 0x00000000，因此内核中线性地址 == 逻辑地址
 	.quad 0x00c0920000000fff	/* 16Mb */ # 内核数据，段基址也是 0x00000000；同时内核、各任务代码段和自身的数据段的段基址和段限长都一样，完全重叠
 	.quad 0x0000000000000000	/* TEMPORARY - don't use */
-	.fill 252,8,0			/* space for LDT's and TSS's etc */ # 每个任务的 TSS 段保存在该任务的 task_struct 中（如何实现）
+	.fill 252,8,0			/* space for LDT's and TSS's etc */ # 每个任务的 TSS 段保存在该任务的 task_struct 中（任务 0 是由 INIT_TASK 宏设置，其余在 fork 函数中设置）

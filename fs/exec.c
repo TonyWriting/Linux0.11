@@ -179,6 +179,7 @@ static unsigned long change_ldt(unsigned long text_size,unsigned long * page)
 /*
  * 'do_execve()' executes a new program.
  */
+// 进程创建成功后，会与父进程共享同一个程序。为了使得子进程执行其它程序就需要将要执行的程序调入内存中，它由系统调用 execve 完成
 int do_execve(unsigned long * eip,long tmp,char * filename,
 	char ** argv, char ** envp)
 {
@@ -335,7 +336,7 @@ restart_interp:
 	current->brk = ex.a_bss +
 		(current->end_data = ex.a_data +
 		(current->end_code = ex.a_text));
-	current->start_stack = p & 0xfffff000;
+	current->start_stack = p & 0xfffff000; // bit mask for the page number，即从页顶部开始
 	current->euid = e_uid;
 	current->egid = e_gid;
 	i = ex.a_text+ex.a_data;
