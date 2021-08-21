@@ -48,9 +48,10 @@ OLDSS		= 0x2C
 state	= 0		# these are offsets into the task-struct.
 counter	= 4
 priority = 8
-signal	= 12
-sigaction = 16		# MUST be 16 (=len of sigaction)
-blocked = (33*16)
+kernel_stack = 12 # the offset byte of kernel stack point in the PCB is 12
+signal	= 16 # these need to be delayed four bytes backwards
+sigaction = 20		# MUST be 20 (=len of sigaction)
+blocked = (37*16)
 
 # offsets within sigaction
 sa_handler = 0
@@ -60,6 +61,8 @@ sa_restorer = 12
 
 nr_system_calls = 72
 
+esp0 = 4 # the offset byte of kernel stack point in the tss is 4
+
 /*
  * Ok, I get parallel printer interrupts while using the floppy for some
  * strange reason. Urgel. Now I just ignore them.
@@ -67,6 +70,8 @@ nr_system_calls = 72
 .globl system_call,sys_fork,timer_interrupt,sys_execve
 .globl hd_interrupt,floppy_interrupt,parallel_interrupt
 .globl device_not_available, coprocessor_error
+
+.globl switch_to, first_return_from_kernel
 
 .align 2
 bad_sys_call:
@@ -283,3 +288,58 @@ parallel_interrupt:
 	outb %al,$0x20
 	popl %eax
 	iret
+
+switch_to:
+    pushl %ebp
+    movl %esp,%ebp
+
+    pushl %ecx
+    pushl %ebx
+    pushl %eax
+
+    movl 8(%ebp),%ebx
+    cmpl %ebx,current # if the next PCB equals to the current, skip switching and jump to 1f
+    je 1f
+
+    # switch PCB
+    movl %ebx,%eax
+    xchgl %eax,current
+
+    # overwrite the kernel stack point of the shared TSS
+    movl tss,%ecx
+    addl $4096,%ebx # give a initial value indicating there is no element in the kernel stack
+    movl %ebx,esp0(%ecx)
+
+    # switch kernel stack
+    movl %esp,kernel_stack(%eax)
+    movl 8(%ebp),%ebx
+    movl kernel_stack(%ebx),%esp
+
+    # switch LDT
+    movl 12(%ebp),%ecx
+    lldt %cx
+
+    # refresh LDTR
+    movl $0x17,%ecx
+    mov %cx,%fs
+
+    # deal with coprocessor, not relevant here
+    cmpl %eax,last_task_used_math
+    jne 1f
+    clts
+
+1:  popl %eax
+    popl %ebx
+    popl %ecx
+    popl %ebp
+ret
+
+first_return_from_kernel:
+    popl %edx
+    popl %edi
+    popl %esi
+    pop %gs
+    pop %fs
+    pop %es
+    pop %ds
+    iret
