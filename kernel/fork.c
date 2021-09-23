@@ -80,6 +80,7 @@ int copy_process(int nr,long ebp,long edi,long esi,long gs,long none,
 		return -EAGAIN;
 	task[nr] = p;
 	*p = *current;	/* NOTE! this doesn't copy the supervisor stack */
+	 // 防止内核调度它执行，但是删掉这行也可以吧？因为马上就将 state 置为 TASK_RUNNING，中间是内核代码，linux 0.11 不可抢占。
 	p->state = TASK_UNINTERRUPTIBLE;
 	p->pid = last_pid;
 	p->father = current->pid;

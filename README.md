@@ -21,7 +21,7 @@ apt-get install libexpat1-dev:i386
 
 - 强烈建议**不用** WSL/WSL2 ！
 
-  我曾尝试用 WSL/WSL2，解决了一个个问题，最终还是发现 Windows 和 Linux 0.11 的文件系统无法/难以兼容，从而无法与 Linux 0.11 交换文件。最终转向了[阿里云](https://www.aliyun.com/activity/ambassador/share-gift/goods?taskCode=xfyh2107&recordId=757672&userCode=i5mn5r7m)，选择了其中最便宜的云服务器，算上新用户优惠券一年不到 90 元。其他公司的云（例如微软）当然也可以，价格应该也差不多。
+  我曾尝试用 WSL/WSL2，解决了一个个问题，最终还是发现 Windows 和 Linux 0.11 的文件系统无法/难以兼容，从而无法与 Linux 0.11 交换文件。最终转向了[阿里云](https://www.aliyun.com/activity/ambassador/share-gift/goods?taskCode=xfyh2107&recordId=757672&userCode=i5mn5r7m)，选择了其中最便宜的云服务器，加上新用户优惠券一年仅几十元。
 
 ## 代码注释
 
@@ -200,6 +200,369 @@ return -1; \
 #### `0x80` 和 `__NR__##name`
 
 这两个都是整型，并且都是在数组中的偏移。区别在于，`0x80` 是中断向量，它是中断描述符表 IDT 的偏移，代表着这个中断是系统调用 ；而 `__NR__##name` 则是 `sys_call_table` 数组的偏移，被称为系统调用号，放在 EAX 寄存器中作为入参传递给内核。`sys_call_table` 里面的元素是函数指针，由 `__NR__##name` 确定调用哪个内核态的函数。IDT 和 `sys_call_table` 都是全局变量。
+
+## 实验三 进程运行轨迹的跟踪与统计
+
+### 实验内容
+
+进程从创建（Linux 下调用 `fork()`）到结束的整个过程就是进程的生命期，进程在其生命期中的**运行轨迹实际上就表现为进程状态的多次切换**，如进程创建以后会成为就绪态；当该进程被调度以后会切换到运行态；在运行的过程中如果启动了一个文件读写操作，操作系统会将该进程切换到阻塞态（等待态）从而让出 CPU；当文件读写完毕以后，操作系统会在将其切换成就绪态，等待进程调度算法来调度该进程执行……
+
+本次实验包括如下内容：
+
+- 基于模板 `process.c` 编写多进程的样本程序，实现如下功能：所有子进程都并行运行，每个子进程的实际运行时间一般不超过 30 秒； + 父进程向标准输出打印所有子进程的 id，并在所有子进程都退出后才退出；
+- 在 `Linux0.11` 上实现进程运行轨迹的跟踪。 基本任务是在内核中维护一个日志文件 `/var/process.log`，把从操作系统启动到系统关机过程中所有进程的运行轨迹都记录在这一 log 文件中。
+- 在修改过的 0.11 上运行样本程序，通过分析 log 文件，统计该程序建立的所有进程的等待时间、完成时间（周转时间）和运行时间，然后计算平均等待时间，平均完成时间和吞吐量。可以自己编写统计程序，也可以使用 python 脚本程序—— `stat_log.py`（在 `/home/teacher/` 目录下） ——进行统计。
+- 修改 0.11 进程调度的时间片，然后再运行同样的样本程序，统计同样的时间数据，和原有的情况对比，体会不同时间片带来的差异。
+
+`/var/process.log` 文件的格式必须为：
+
+```txt
+pid    X    time
+```
+
+其中：
+
+- pid 是进程的 ID；
+- X 可以是 N、J、R、W 和 E 中的任意一个，分别表示进程新建(N)、进入就绪态(J)、进入运行态(R)、进入阻塞态(W) 和退出(E)；
+- time 表示 X 发生的时间。这个时间不是物理时间，而是系统的滴答时间(tick)；
+
+三个字段之间用制表符分隔。例如：
+
+```txt
+12    N    1056
+12    J    1057
+4    W    1057
+12    R    1057
+13    N    1058
+13    J    1059
+14    N    1059
+14    J    1060
+15    N    1060
+15    J    1061
+12    W    1061
+15    R    1061
+15    J    1076
+14    R    1076
+14    E    1076
+......
+```
+
+### 原理分析
+
+本实验有好几点内容，最核心的是第二点的修改内核代码，从而在 `/var/process.log` 文件中记录所有进程的运行轨迹。运行轨迹就是状态的切换，那么进程状态保存在哪里？回答是 `task_struct` 的 `state` 变量。 Linux 0.11 的状态都有哪些呢？答案在源码的 `sched.h` 文件中，一共有 5 个宏：
+
+```
+#define TASK_RUNNING		0
+#define TASK_INTERRUPTIBLE	1
+#define TASK_UNINTERRUPTIBLE	2
+#define TASK_ZOMBIE		3
+#define TASK_STOPPED		4
+```
+
+虽然 `TASK_STOPPED` 被定义了，但是 Linux 0.11 代码中并没有将它赋值给任何 `task_struct` 的 `state`，因此 Linux 0.11 尚未实现该状态。
+
+因此，从代码上看，Linux 0.11 的可用状态一共只有 4 种。但它们和实验要求的新建（N）、进入就绪态（J）、进入运行态（R）、进入阻塞态（W） 和退出（E）不是一一对应的。比如， `TASK_RUNNING` 的对应两种状态：就绪态（J）和运行态（R）；而 `TASK_INTERRUPTIBLE` 和 `TASK_UNINTERRUPTIBLE` 通常都对应阻塞态（W）。但是有一个例外，即在 `copy_process` 中创建了进程后马上将该进程的状态置为 `TASK_UNINTERRUPTIBLE`，这里的含义应该就是实验内容中的新建（N），而不是阻塞态（W）。
+
+那么怎么能**毫无遗漏地**找到全部的状态切换点呢？我的方法是在源码里全局搜索上述的状态宏名，再全局搜索 `state` ，因为源码里有时候会直接给 `state` 赋值 0，而非 `TASK_RUNNING`。这样能确保找到全部状态切换点所在的函数，再去理解这些函数。下面依次分析不同的状态宏：
+
+#### TASK_RUNNING
+
+严格地说，`TASK_RUNNING` 有三种含义：就绪态，内核态运行，用户态运行，对应着实验要求两种状态：就绪态（J）和运行态（R）。它出现的地方有：
+
+- `fork.c` 的 `copy_process()`
+
+```c
+int copy_process(...) // 入参省略
+{
+    // fork 和 copy_process() 的详细分析见实验四
+	...
+    p->state = TASK_RUNNING;	/* do this last, just in case */
+    // 此时子进程 p 切换成就绪态（J）
+	return last_pid;
+}
+```
+
+- `sched.c` 的 `schedule()`
+
+```c
+void schedule(void)
+{
+	int i,next,c;
+	struct task_struct ** p;
+
+/* check alarm, wake up any interruptible tasks that have got a signal */
+	for(p = &LAST_TASK ; p > &FIRST_TASK ; --p)
+		if (*p) {
+			if ((*p)->alarm && (*p)->alarm < jiffies) {
+					(*p)->signal |= (1<<(SIGALRM-1));
+					(*p)->alarm = 0;
+				}
+			if (((*p)->signal & ~(_BLOCKABLE & (*p)->blocked)) && (*p)->state==TASK_INTERRUPTIBLE)
+                // 如果进程 p 的信号位图中除去被阻塞的信号还有其他信号，那么它从阻塞态（W）切换为就绪态（J）
+				(*p)->state=TASK_RUNNING;
+		}
+
+/* this is the scheduler proper: */
+	while (1) {
+		c = -1;
+        // 初始值为 0，如果没有可调度程序，会调度任务 0（虽然此时的任务 0 可能是阻塞态）。任务 0 只会执行系统调用 pause，又会进入这里
+        // 因此任务 0 是唯一一个可能从阻塞态到运行态的
+		next = 0;
+		i = NR_TASKS;
+		p = &task[NR_TASKS];
+		while (--i) {
+			if (!*--p)
+				continue; // 跳过不含任务的任务槽
+			if ((*p)->state == TASK_RUNNING && (*p)->counter > c) // 两个条件：其一就绪，其二 counter 最大
+				c = (*p)->counter, next = i;
+		}
+		if (c) break; // 如果存在某一个进程的 counter 不为 0（代表时间片未用完），或者没有可以运行的任务（c == -1）则跳出循环
+		for(p = &LAST_TASK ; p > &FIRST_TASK ; --p)
+			if (*p)
+				(*p)->counter = ((*p)->counter >> 1) + (*p)->priority;
+	}
+    // 如果 next 不为当前进程 current，那么在 switch_to 会将 current 切换为就绪态（J），next 切换为运行态（R）
+    // Linux 0.11 用 TASK_RUNNING 同时表示就绪态（J）和运行态（R），所以源码里不需要改变 current 和 next 的 state
+    // 但是按照本实验要求，需要将它们作区分并打印出来
+	switch_to(next); // 切换到另一个任务后，switch_to 同时实现指令流和 TSS 的切换，即其后半部分代码不会执行
+} // 该括号不会执行，只有在原任务被切换回来才会继续执行
+```
+
+`TASK_RUNNING` 以 0 出现的地方有：
+
+- `sched.c` 的 `sleep_on()`
+
+```c
+// 将当前任务（这里任务和进程是一个意思，但是任务更强调进程进入了内核态）置为不可中断的等待状态，并让睡眠队列头指针指向当前任务
+// Linux 0.11 未采用真正链表的形式，而是通过内核栈中的 tmp 隐式串联起来
+// wake_up 总是唤醒队列头指针指向的任务，而在 tmp 里面保存了后一个任务的地址
+// 对于不可中断睡眠 (TASK_UNINTERRUPTIBLE) 只能由 wake_up 函数显式地从隐式等待队列头部唤醒队列头进程
+// 再由这个队列头部进程执行 tmp->state = 0 依次唤醒等待队列
+void sleep_on(struct task_struct **p) // *p 为等待队列头指针，它总是指向最前面的等待任务
+{
+	struct task_struct *tmp;
+
+	if (!p)
+		return;
+	if (current == &(init_task.task)) // current 为当前任务的指针
+		panic("task[0] trying to sleep");
+	tmp = *p; // tmp 指向队列中队列头指针指向的原等待任务
+	*p = current; // 队列头指针指向新加入的等待任务，即调用本函数的任务
+	current->state = TASK_UNINTERRUPTIBLE; // 当前进程 current 从运行态（R）切换成（不可中断的）阻塞态（W），只能用 wake_up() 唤醒
+	schedule(); // 本任务睡眠，切换到其他任务去了
+    // 当调用本函数的任务被唤醒并重新执行时（注意任务被唤醒后不一定会立刻执行它），将比它早进入等待队列中的那一个任务唤醒进入就绪状态
+    // 对于不可中断的睡眠，一定是严格按照“队列”的头部进行唤醒
+	if (tmp)
+		tmp->state=0; // 进程 tmp（比它早进入等待队列中的那一个任务）变成就绪态（J）
+}
+```
+
+- `sched.c` 的 `interruptible_sleep_on()`
+
+```c
+// 除了 wake_up 之外，可以用信号（存放在进程 PCB 中一个向量的某个位置）唤醒
+// 与 sleep_on 不同，它会遇到一个问题，即可能唤醒等待队列中间的某个进程，此时需要适当调整队列。这是两个函数的主要区别
+void interruptible_sleep_on(struct task_struct **p)
+{
+	struct task_struct *tmp;
+
+	if (!p)
+		return;
+	if (current == &(init_task.task))
+		panic("task[0] trying to sleep");
+	tmp=*p;
+	*p=current;
+     // 当前进程 current 从运行态（R）切换成（可中断的）阻塞态（W），可以通过信号（在 schedule() 中）和 wake_up() 唤醒
+repeat:	current->state = TASK_INTERRUPTIBLE;
+	schedule();
+    // 当调用本函数的任务被唤醒并重新执行时，判断自己是否为队列头。如果不是（信号唤醒），则将队列头唤醒，并将自己睡眠，重新调度
+	if (*p && *p != current) {
+		(**p).state=0; // 进程 **p 变成就绪态（J）
+		goto repeat;
+	}
+	*p=NULL;
+	if (tmp)
+		tmp->state=0; // 进程 tmp（比它早进入等待队列中的那一个任务）从阻塞态（W）切换成就绪态（J）
+}
+```
+
+- `sched.c` 的 `wake_up()`
+
+```c
+void wake_up(struct task_struct **p)
+{
+	if (p && *p) {
+		(**p).state=0; // 进程 **p 从阻塞态（W）切换成就绪态（J）
+		*p=NULL;
+	}
+}
+```
+
+上面三个函数都和阻塞态有关。如果只是要完成实验，显然只需在 `state` 改变后加打印即可。但如果要彻底搞懂这三个函数，那比较困难。（可加图片进行分析）赵老师的《Linux 内核完全注释》第 8 章第 7 节对此做了详细分析。此外，赵老师还认为源码 `sleep_on` 和  `wake_up` 存在错误，但我认为应该没有错误，原因见[这里](https://blog.csdn.net/fukai555/article/details/42169885)。
+
+#### TASK_INTERRUPTIBLE
+
+`TASK_INTERRUPTIBLE` 的含义是可中断睡眠/阻塞状态。如果进程在内核态中需要等待系统的某个资源时，那么该进程就能通过 `interruptible_sleep_on()` 进入此状态； 通过信号和 `wake_up()` 都能将此状态切换为 `TASK_RUNNING`。它出现的地方有：
+
+- `sched.c` 的 `schedule()`
+
+- `sched.c` 的 `interruptible_sleep_on()`
+
+上面两个内核函数在对 `TASK_RUNNING` 分析已经出现过了。`schedule()` 中是通过判断信号，若满足条件则将 `TASK_INTERRUPTIBLE` 切换成 `TASK_RUNNING`。
+
+- `sched.c` 的 `sys_pause()`
+
+```c
+// 系统无事可做的时候，进程 0 会始终循环调用 sys_pause()，以激活调度算法
+// 此时它的状态可以是等待态，等待有其它可运行的进程；也可以叫运行态，因为它是唯一一个在 CPU 上运行的进程，只不过运行的效果是等待
+// 这里采用第二种方式，因为如果用第一种的方式，那么 /var/process.log 会多出来许多进程 0 的状态切换而冗杂
+// 因此，打印的时候需要判断当前任务是否为 0，如果是则不进行打印
+int sys_pause(void)
+{
+	current->state = TASK_INTERRUPTIBLE; // 当前任务从运行态（R）切换为阻塞态（W）
+	schedule();
+	return 0;
+}
+```
+
+- `exit.c` 的 `sys_waitpid()`
+
+`sys_waitpid()` 被用户态的 `waitpid()` 调用，`waitpid()` 被 `wait()` 调用，`wait()` 被任务 1 的初始化函数 `init()` 调用。
+
+```c
+// 挂起当前进程，直到 pid 执行的子进程退出（终止）或者收到终止该进程的信号
+// 如果 pid 所指的子进程已经僵死（TASK_ZOMBIE），则本调用立即返回
+// 详细分析见《Linux 内核完全注释》
+int sys_waitpid(pid_t pid,unsigned long * stat_addr, int options)
+{
+	...
+	if (flag) {
+		if (options & WNOHANG) // waitpid 传进来的 options 为 0，因此不会立即返回
+			return 0;
+		current->state=TASK_INTERRUPTIBLE; // 当前进程从就绪态（J）变成阻塞态（W）
+		schedule();
+        // 重新调度本任务后，如果没有收到除了 SIGCHLD 以外的信号，还是重复处理
+		if (!(current->signal &= ~(1<<(SIGCHLD-1))))
+			goto repeat;
+		else
+			return -EINTR;
+	}
+	return -ECHILD;
+}
+```
+
+#### TASK_UNINTERRUPTIBLE
+
+`TASK_UNINTERRUPTIBLE` 的含义是不可中断睡眠/阻塞状态。和 `TASK_INTERRUPTIBLE` 的区别是它只能通过 `wake_up()` 唤醒。它出现的地方有：
+
+- `fork.c` 的 `copy_process()`
+
+```c
+int copy_process(...) // 入参省略
+{
+    // fork 和 copy_process() 的详细分析见实验四
+	...
+    // get_free_page 获得一页(4KB)内存（内存管理中会讲，不能用 malloc 因为它是用户态的库代码，内核中不能用）
+    // 找到 mem_map 为 0（空闲）的那一页，将其地址返回。并且进行类型强制转换，即将该页内存作为 task_stuct(PCB)
+    // 这一页 4KB 专门用来存放 task_struct 和内核栈
+	p = (struct task_struct *) get_free_page();
+	if (!p)
+		return -EAGAIN;
+	task[nr] = p;
+	*p = *current;
+    // 新建任务 p 切换为 TASK_UNINTERRUPTIBLE，但是按照实验要求它对应着新建（N）
+	p->state = TASK_UNINTERRUPTIBLE;
+	...
+}
+```
+
+- `sched.c` 的 `sleep_on()`
+
+该内核函数在对 `TASK_RUNNING` 分析已经出现过了。
+
+#### TASK_ZOMBIE
+
+`TASK_ZOMBIE` 的含义是僵死状态。当进程已停止运行，但是其父进程还没有询问其状态时，则称该进程处于僵死状态。为了让父进程能够获取其停止运行的信息，此时该子进程的任务数据结构还需要保留着。一旦父进程调用 `wait()` 取得了子进程的信息，则处于该状态进程的任务数据结构会被释放掉。该状态出现的地方有：
+
+- `exit.c` 的 `do_exit()`
+
+```c
+int do_exit(long code)
+{
+	int i;
+	// 首先释放当前进程代码段和数据段所占的内存页
+    // 当前任务的 task_struct 所在内存页不在该函数中释放，而是通过父进程调用 wait()，最终在 release() 中释放
+	free_page_tables(get_base(current->ldt[1]),get_limit(0x0f));
+	free_page_tables(get_base(current->ldt[2]),get_limit(0x17));
+	for (i=0 ; i<NR_TASKS ; i++)
+		if (task[i] && task[i]->father == current->pid) {
+			task[i]->father = 1; // 如果当前进程有子进程，就将子进程的 father 变为 init 进程
+			if (task[i]->state == TASK_ZOMBIE)
+				/* assumption task[1] is always init */
+                // 如果该子进程处于僵死 TASK_ZOMBIE 状态，则向 init 进程发送子进程终止信号 SIGCHLD
+				(void) send_sig(SIGCHLD, task[1], 1);
+		}
+	// 关闭当前进程打开的全部文件
+	for (i=0 ; i<NR_OPEN ; i++)
+		if (current->filp[i])
+			sys_close(i);
+    // 对当前进程的当前工作目录，根目录和运行程序的 i 节点进行同步操作，放回各个 i 节点并置空
+	iput(current->pwd);
+	current->pwd=NULL;
+	iput(current->root);
+	current->root=NULL;
+	iput(current->executable);
+	current->executable=NULL;
+	if (current->leader && current->tty >= 0) // 如果进程是一个会话头进程并有控制终端，则释放该终端
+		tty_table[current->tty].pgrp = 0;
+	if (last_task_used_math == current)
+		last_task_used_math = NULL;
+	if (current->leader) // 如果进程是一个 leader 进程，则终止该会话的所有相关进程
+		kill_session();
+	current->state = TASK_ZOMBIE; // 当前进程 current 从运行态（R）切换成退出（E）
+	current->exit_code = code;
+	tell_father(current->father); // 通知父进程，即向父进程发送信号 SIGCHLD 告知当前进程将终止
+	schedule();
+	return (-1);	/* just to suppress warnings */
+}
+```
+
+- `exit.c` 的 `sys_waitpid()`
+
+在该函数中，`TASK_ZOMBIE` 只是作为 `switch-case` 的条件，没有赋给任何任务的 `task_struct` ，因此不需要增加打印。
+
+#### TASK_STOPPED
+
+`TASK_STOPPED` 的含义是暂停状态。当进程收到信号 `SIGSTOP`、`SIGTSTP`、`SIGTTIN` 或 `SIGTTOU` 时会进入暂停状态。可向其发送 `SIGGCONT` 信号让进程切换成就绪状态。在 Linux 0.11 中，该状态仅作为 `switch-case` 的条件，因此 Linux 0.11 尚未实现该状态的转换处理，对其不需要增加打印。
+
+可见进程的状态切换点遍布源码各处，可以借此对 `fork.c`，`sched.c` 和 `exit.c` 以及 `main.c` 的 `init()` 函数通盘了解。
+
+#### 多进程样本程序
+
+[process.c](https://gitee.com/na-chern/hit-os-learning/blob/Experiment3_process_tracking_and_statistics/homework/process.c)只是在 [Wangzhike 仓库](https://github.com/Wangzhike/HIT-Linux-0.11/blob/master/3-processTrack/linux-0.11/process.c)的基础上加了少量注释和打印。
+
+#### 修改时间片
+
+通过实验楼的[分析](https://www.lanqiao.cn/courses/115/learning/?id=570)，进程的时间片初值源于父进程的 `priority`，最终源于进程 0。它的时间片初值是在 `sched.h` 的进程 0 的宏定义中：
+
+```c
+#define INIT_TASK \
+// 三个值分别对应 state、counter 和 priority。这里的数值代表多少个时钟滴答（tick），在 Linux 0.11 软硬件系统中一个时钟滴答为 10ms
+// 修改第二个值影响进程 0 的时间片初值，修改第三个值影响除进程 0 以外所有进程的时间片初值
+    { 0,15,15,
+```
+
+时间片设置过大，那么其他进程的等待时间会变长；时间片设置过小，那么进程调度次数/耗时（这是一种内耗）变大。因此时间片不宜过小或过大，应合理设置。
+
+### 作业参考
+
+本实验的作业可参考[该分支](https://gitee.com/na-chern/hit-os-learning/tree/Experiment3_process_tracking_and_statistics/)。注意在退出 [Bochs 模拟器](https://www.lanqiao.cn/courses/115/learning/?id=374)前，需要先在 Linux 0.11 shell 中执行 `exit`，这样 `process.c` 中的进程的状态信息才会输出到日志中。另外提供的 `stat_log.py` 使用的是 Python2 语法，如果要在 Python3 环境运行，需要进行[转换](https://dev.to/rohitnishad613/convert-python-2-to-python-3-in-1-single-click-2a8p)。
+
+### 实验报告
+
+- 结合自己的体会，谈谈从程序设计者的角度看，单进/线程编程和多进/线程编程最大的区别是什么？
+
+单进/线程中代码的运行顺序是固定从上到下的，但是多进/线程的运行顺序是不确定的，可能一会运行进程 A，之后某个未知时刻运行进程 B。对于 I/O-bound 的任务（比如从网络请求数据，访问数据库，读写文件）显然多进/线程的执行时间能更短。对于 CPU-bound 的任务（比如数值计算和图形处理），多进/线程的优势在于能提供一个 UI 界面给用户，从而能监控管理这些任务（单进/线启动了这些任务就没法中途停止或者显示状态，只能等待它们执行完毕）。
 
 ## 实验四 基于内核栈切换的进程切换
 
