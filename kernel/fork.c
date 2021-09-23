@@ -75,14 +75,23 @@ int copy_process(int nr,long ebp,long edi,long esi,long gs,long none,
 	int i;
 	struct file *f;
 
+    // get_free_page 获得一页(4KB)内存（内存管理中会讲，不能用 malloc 因为它是用户态的库代码，内核中不能用）
+    // 找到 mem_map 为 0（空闲）的那一页，将其地址返回。并且进行类型强制转换，即将该页内存作为 task_stuct(PCB)
+    // 这一页 4KB 专门用来存放 task_struct 和内核栈
 	p = (struct task_struct *) get_free_page();
 	if (!p)
 		return -EAGAIN;
 	task[nr] = p;
 	*p = *current;	/* NOTE! this doesn't copy the supervisor stack */
+	// 新建任务 p 切换为 TASK_UNINTERRUPTIBLE，但是按照实验要求它对应着新建（N）
 	p->state = TASK_UNINTERRUPTIBLE;
 	p->pid = last_pid;
 	p->father = current->pid;
+#if VERBOSE
+    fprintk(3, "%ld\t%c\t%ld\t%s\t%ld\n", p->pid, 'N', jiffies, "copy_process", p->father);
+#else
+	fprintk(3, "%ld\t%c\t%ld\n", p->pid, 'N', jiffies);
+#endif
 	p->counter = p->priority;
 	p->signal = 0;
 	p->alarm = 0;
@@ -130,6 +139,11 @@ int copy_process(int nr,long ebp,long edi,long esi,long gs,long none,
 	set_tss_desc(gdt+(nr<<1)+FIRST_TSS_ENTRY,&(p->tss));
 	set_ldt_desc(gdt+(nr<<1)+FIRST_LDT_ENTRY,&(p->ldt));
 	p->state = TASK_RUNNING;	/* do this last, just in case */
+#if VERBOSE
+    fprintk(3, "%ld\t%c\t%ld\t%s\t%ld\n", p->pid, 'J', jiffies, "copy_process", p->father);
+#else
+	fprintk(3, "%ld\t%c\t%ld\n", p->pid, 'J', jiffies);
+#endif
 	return last_pid;
 }
 

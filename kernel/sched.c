@@ -57,7 +57,7 @@ union task_union {
 
 static union task_union init_task = {INIT_TASK,};
 
-long volatile jiffies=0;
+long volatile jiffies=0; // 记录从开机到当前时间的时钟中断发生次数（溢出了怎么办？）
 long startup_time=0;
 struct task_struct *current = &(init_task.task);
 struct task_struct *last_task_used_math = NULL;
@@ -108,42 +108,86 @@ void schedule(void)
 
 /* check alarm, wake up any interruptible tasks that have got a signal */
 
-	for(p = &LAST_TASK ; p > &FIRST_TASK ; --p)
-		if (*p) {
-			if ((*p)->alarm && (*p)->alarm < jiffies) {
-					(*p)->signal |= (1<<(SIGALRM-1));
-					(*p)->alarm = 0;
-				}
-			if (((*p)->signal & ~(_BLOCKABLE & (*p)->blocked)) &&
-			(*p)->state==TASK_INTERRUPTIBLE)
-				(*p)->state=TASK_RUNNING;
-		}
+    for (p = &LAST_TASK; p > &FIRST_TASK; --p)
+        if (*p)
+        {
+            if ((*p)->alarm && (*p)->alarm < jiffies)
+            {
+                (*p)->signal |= (1 << (SIGALRM - 1));
+                (*p)->alarm = 0;
+            }
+            if (((*p)->signal & ~(_BLOCKABLE & (*p)->blocked)) && (*p)->state == TASK_INTERRUPTIBLE)
+            {
+                (*p)->state = TASK_RUNNING;
+                // 如果进程 p 的信号位图中除去被阻塞的信号还有其他信号，那么它从阻塞态（W）切换为就绪态（J）
+#if VERBOSE
+                fprintk(3, "%ld\t%c\t%ld\t%s\t%ld\n", (*p)->pid, 'J', jiffies, "schedule", (*p)->father);
+#else
+                fprintk(3, "%ld\t%c\t%ld\n", (*p)->pid, 'J', jiffies);
+#endif
+            }
+        }
 
-/* this is the scheduler proper: */
-
-	while (1) {
-		c = -1;
-		next = 0;
-		i = NR_TASKS;
-		p = &task[NR_TASKS];
-		while (--i) {
-			if (!*--p)
-				continue;
-			if ((*p)->state == TASK_RUNNING && (*p)->counter > c)
-				c = (*p)->counter, next = i;
-		}
-		if (c) break;
-		for(p = &LAST_TASK ; p > &FIRST_TASK ; --p)
-			if (*p)
-				(*p)->counter = ((*p)->counter >> 1) +
-						(*p)->priority;
-	}
-	switch_to(next);
+    /* this is the scheduler proper: */
+    while (1)
+    {
+        c = -1;
+        // 初始值为 0，如果没有可调度程序，会调度任务 0（虽然此时的任务 0 可能是阻塞态）。任务 0 只会执行系统调用 pause，又会进入这里
+        // 因此任务 0 是唯一一个可能从阻塞态到运行态的
+        next = 0;
+        i = NR_TASKS;
+        p = &task[NR_TASKS];
+        while (--i)
+        {
+            if (!*--p)
+                continue;                                          // 跳过不含任务的任务槽
+            if ((*p)->state == TASK_RUNNING && (*p)->counter > c)  // 两个条件：其一就绪，其二 counter 最大
+                c = (*p)->counter, next = i;
+        }
+        if (c)
+            break;  // 如果存在某一个进程的 counter 不为 0（代表时间片未用完），或者没有可以运行的任务（c == -1）则跳出循环
+        for (p = &LAST_TASK; p > &FIRST_TASK; --p)
+            if (*p)
+                (*p)->counter = ((*p)->counter >> 1) + (*p)->priority;
+    }
+    // 如果 next 不为当前进程 current，那么在 switch_to 会将 current 切换为就绪态（J），next 切换为运行态（R）
+    // Linux 0.11 用 TASK_RUNNING 同时表示就绪态（J）和运行态（R），所以源码里不需要改变 current 和 next 的 state
+    // 但是按照本实验要求，需要将它们作区分并打印出来
+    if (current->pid != task[next]->pid)
+    {
+        // 判断 current 是否为运行态（R），因为进程阻塞时也有可能会调用 schedule 到达这里
+        if (current->state == TASK_RUNNING)
+        {
+#if VERBOSE
+            fprintk(3, "%ld\t%c\t%ld\t%s\t%ld\n", current->pid, 'J', jiffies, "schedule", current->father);
+#else
+            fprintk(3, "%ld\t%c\t%ld\n", current->pid, 'J', jiffies);
+#endif
+        }
+#if VERBOSE
+        fprintk(3, "%ld\t%c\t%ld\t%s\t%ld\n", task[next]->pid, 'R', jiffies, "schedule", task[next]->father);
+#else
+        fprintk(3, "%ld\t%c\t%ld\n", task[next]->pid, 'R', jiffies);
+#endif
+    }
+    switch_to(next);
 }
 
+// 系统无事可做的时候，进程 0 会始终循环调用 sys_pause()，以激活调度算法
+// 此时它的状态可以是等待态，等待有其它可运行的进程；也可以叫运行态，因为它是唯一一个在 CPU 上运行的进程，只不过运行的效果是等待
+// 这里采用第二种方式，因为如果用第一种的方式，那么 /var/process.log 会多出来许多进程 0 的状态切换而冗杂
+// 因此，打印的时候需要判断当前任务是否为 0，如果是则不进行打印
 int sys_pause(void)
 {
 	current->state = TASK_INTERRUPTIBLE;
+	if (current->pid != FIRST_TASK->pid)
+	{
+#if VERBOSE
+        fprintk(3, "%ld\t%c\t%ld\t%s\t%ld\n", current->pid, 'W', jiffies, "sys_pause", current->father);
+#else
+		fprintk(3, "%ld\t%c\t%ld\n", current->pid, 'W', jiffies);
+#endif
+	}
 	schedule();
 	return 0;
 }
@@ -159,9 +203,21 @@ void sleep_on(struct task_struct **p)
 	tmp = *p;
 	*p = current;
 	current->state = TASK_UNINTERRUPTIBLE;
+#if VERBOSE
+    fprintk(3, "%ld\t%c\t%ld\t%s\t%ld\n", current->pid, 'W', jiffies, "sleep_on", current->father);
+#else
+	fprintk(3, "%ld\t%c\t%ld\n", current->pid, 'W', jiffies);
+#endif
 	schedule();
 	if (tmp)
+	{
 		tmp->state=0;
+#if VERBOSE
+        fprintk(3, "%ld\t%c\t%ld\t%s\t%ld\n", tmp->pid, 'J', jiffies, "sleep_on", tmp->father);
+#else
+		fprintk(3, "%ld\t%c\t%ld\n", tmp->pid, 'J', jiffies);
+#endif
+	}
 }
 
 void interruptible_sleep_on(struct task_struct **p)
@@ -175,22 +231,45 @@ void interruptible_sleep_on(struct task_struct **p)
 	tmp=*p;
 	*p=current;
 repeat:	current->state = TASK_INTERRUPTIBLE;
+#if VERBOSE
+    fprintk(3, "%ld\t%c\t%ld\t%s\t%ld\n", current->pid, 'W', jiffies, "interruptible_sleep_on", current->father);
+#else
+	fprintk(3, "%ld\t%c\t%ld\n", current->pid, 'W', jiffies);
+#endif
 	schedule();
 	if (*p && *p != current) {
 		(**p).state=0;
+#if VERBOSE
+        fprintk(3, "%ld\t%c\t%ld\t%s\t%ld\n", (**p).pid, 'J', jiffies, "interruptible_sleep_on", (**p).father);
+#else
+		fprintk(3, "%ld\t%c\t%ld\n", (**p).pid, 'J', jiffies);
+#endif
 		goto repeat;
 	}
 	*p=NULL;
 	if (tmp)
+	{
 		tmp->state=0;
+#if VERBOSE
+        fprintk(3, "%ld\t%c\t%ld\t%s\t%ld\n", tmp->pid, 'J', jiffies, "interruptible_sleep_on", tmp->father);
+#else
+		fprintk(3, "%ld\t%c\t%ld\n", tmp->pid, 'J', jiffies);
+#endif
+	}
 }
 
 void wake_up(struct task_struct **p)
 {
-	if (p && *p) {
-		(**p).state=0;
-		*p=NULL;
-	}
+    if (p && *p)
+    {
+        (**p).state = 0;
+#if VERBOSE
+        fprintk(3, "%ld\t%c\t%ld\t%s\t%ld\n", (**p).pid, 'J', jiffies, "wake_up", (**p).father);
+#else
+        fprintk(3, "%ld\t%c\t%ld\n", (**p).pid, 'J', jiffies);
+#endif
+        *p = NULL;
+    }
 }
 
 /*
