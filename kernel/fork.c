@@ -49,7 +49,7 @@ int copy_mem(int nr,struct task_struct * p)
 		panic("We don't support separate I&D");
 	if (data_limit < code_limit)
 		panic("Bad data_limit");
-	new_data_base = new_code_base = nr * 0x4000000; // 设置子进程代码段和数据段在线性空间的基地址为：任务标号（注意区别于 pid）* 64MB
+	new_data_base = new_code_base = nr * 0x4000000; // 设置子进程代码段和数据段在线性空间的基地址为：任务标号（注意区别于 pid）* 64MB，可见所有的段的数据段和代码段的基地址都是一样的
 	p->start_code = new_code_base;
 	set_base(p->ldt[1],new_code_base);
 	set_base(p->ldt[2],new_data_base);

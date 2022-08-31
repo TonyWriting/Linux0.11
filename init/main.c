@@ -138,7 +138,7 @@ void main(void)		/* This really IS void, no error here. */
 	sti(); // 开中断（在此之前中断一直是关闭的）
 	move_to_user_mode();  // 切换到用户模式，之后就是用户态的任务 0 了。它访问内核也要经过系统调用
 	if (!fork()) {		/* we count on this going ok */ // 用户态的进程 0 立刻 fork 出 1 号进程（init 进程）
-		init();
+		init(); /* */
 	}
 /*
  *   NOTE!!   For any other task 'pause()' would mean we have to get a

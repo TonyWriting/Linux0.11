@@ -21,7 +21,7 @@ startup_32:
 	mov %ax,%es
 	mov %ax,%fs
 	mov %ax,%gs
-	lss stack_start,%esp // 将 0x10 赋值给 ss，将 user_task 数组的末尾元素的地址赋值给 esp。这是内核程序使用的堆栈
+	lss stack_start,%esp # 将 0x10 赋值给 ss，将 user_task 数组的末尾元素的地址赋值给 esp。这是内核程序使用的堆栈
 	call setup_idt
 	call setup_gdt
 	movl $0x10,%eax		# reload all the segment registers

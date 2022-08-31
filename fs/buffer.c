@@ -39,8 +39,8 @@ int NR_BUFFERS = 0;
 static inline void wait_on_buffer(struct buffer_head * bh)
 {
 	cli();
-	while (bh->b_lock)
-		sleep_on(&bh->b_wait);
+	while (bh->b_lock) /* b_lock 相当于信号量。wake_up() 会唤醒隐式链表中的全部进程，所以需要用 while 来重新判断它们被唤醒后是否可以继续运行 */
+		sleep_on(&bh->b_wait); /* b_wait 是阻塞队列的队首指针（一重指针）*/
 	sti();
 }
 
@@ -267,18 +267,29 @@ void brelse(struct buffer_head * buf)
  * bread() reads a specified block and returns the buffer that contains
  * it. It returns NULL if the block was unreadable.
  */
+/* 
+ * Linux 0.11 访问磁盘的基本方法是在内存中划出一段高速缓冲区
+ * 从设备中读取指定的数据块并返回含有数据的缓冲区。如果指定的块不存在则返回 NULL
+ * 根据指定的设备号 dev 和数据块号 block，首先在高速缓冲区中申请一块缓冲块
+ * 如果该缓冲块中已经包含有效的数据就直接返回该缓冲块指针，否则就从设备中读取指定的数据块中并返回缓冲块指针
+ */
 struct buffer_head * bread(int dev,int block)
 {
 	struct buffer_head * bh;
-
+    /* 在高速缓冲区中申请一块缓冲块，如果返回 NULL 则内核出错停机 */
 	if (!(bh=getblk(dev,block)))
 		panic("bread: getblk returned NULL\n");
+    /* 如果该缓冲块中数据是有效的（已更新的）可以直接使用，直接返回 */
 	if (bh->b_uptodate)
 		return bh;
+    /* 否则调用底层块设备读写 ll_rw_block 函数，产生读设备块请求 */
 	ll_rw_block(READ,bh);
-	wait_on_buffer(bh);
+    /* 然后当前进入睡眠阻塞状态（因为磁盘读写相对于 CPU 很慢，应让出 CPU），等待缓冲区解锁。因此需要考虑进程间的同步互斥问题*/
+	wait_on_buffer(bh); /* bh 中定义了一个信号量 b_lock */
+    /* 睡眠醒来后，如果该缓冲区已更新，则返回缓冲区头指针并退出 */
 	if (bh->b_uptodate)
 		return bh;
+    /* 否则表示读设备操作失败，释放该缓冲区并返回 NULL */
 	brelse(bh);
 	return NULL;
 }

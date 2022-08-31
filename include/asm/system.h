@@ -3,7 +3,7 @@ __asm__ ("movl %%esp,%%eax\n\t" \
 	"pushl $0x17\n\t" \ // 0x17 是指 LDT 表中的数据段选择符
 	"pushl %%eax\n\t" \ // esp 依然是内核程序使用的 user_stack 原本的位置值
 	"pushfl\n\t" \ // 将 EFLAGS 寄存器的全部内容压入堆栈
-	"pushl $0x0f\n\t" \ // 0x17 是指 LDT 表中的代码段选择符
+	"pushl $0x0f\n\t" \ // 0x0f 是指 LDT 表中的代码段选择符，因为所有进程都是 fork 进程 0 的，因为所有进程的代码段选择子 CS 都为 0x0f
 	"pushl $1f\n\t" \ // 将 iret 的下一条指令压栈
 	"iret\n" \ // 会将上面五个弹出，继续向下执行代码，但特权级从 0 变成 3，变成了用户程序（任务 0）
 	"1:\tmovl $0x17,%%eax\n\t" \

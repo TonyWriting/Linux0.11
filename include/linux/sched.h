@@ -121,7 +121,7 @@ struct task_struct {
  *  INIT_TASK is used to set up the first task table, touch at
  * your own risk!. Base=0, limit=0x9ffff (=640kB)
  */
-// 下面定义了第一个任务（任务 0）的 PCB（内核的 GDT 是在 head.s 中设置的，内核进程的 PCB 放在哪里呢？但内核进程有没有 PCB 呢？好像没有。。。任务 0 是用户程序）
+// 下面定义了第一个任务（任务 0）的 PCB（内核的 GDT 是在 head.s 中设置的，内核进程（内核并没有进程）的 PCB 放在哪里呢？但内核进程有没有 PCB 呢？好像没有。。。任务 0 是用户程序）
 // 应注意，当任务 0 通过 move_to_user_mode 开始运行时，TSS 段中保存的寄存器和这里的有些不一样
 #define INIT_TASK \
 /* state etc */	{ 0,15,15, \
