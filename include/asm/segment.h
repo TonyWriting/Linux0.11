@@ -1,3 +1,4 @@
+// 读取 fs 段（存放着 LDT 表的数据段描述符的段选择子，即用户态的数据段）指定位置 addr 的一个字节
 static inline unsigned char get_fs_byte(const char * addr)
 {
 	unsigned register char _v;

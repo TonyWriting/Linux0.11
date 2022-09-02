@@ -55,7 +55,7 @@ int copy_mem(int nr,struct task_struct * p)
 	set_base(p->ldt[2],new_data_base);
 	if (copy_page_tables(old_data_base,new_data_base,data_limit)) { // 设置子进程的页目录表和页表项，即复制父进程的页目录表和页表项
 		printk("free_page_tables: from copy_mem\n");
-		free_page_tables(new_data_base,data_limit);
+		free_page_tables(new_data_base,data_limit); // 失败则释放
 		return -ENOMEM;
 	}
 	return 0;
@@ -133,7 +133,7 @@ int copy_process(int nr,long ebp,long edi,long esi,long gs,long none,
 		free_page((long) p);
 		return -EAGAIN;
 	}
-	for (i=0; i<NR_OPEN;i++) // 
+	for (i=0; i<NR_OPEN;i++) // 如果父进程有文件是打开的，则相应的文件打开次数加 1，因为子进程会共享它们
 		if ((f=p->filp[i]))
 			f->f_count++;
 	if (current->pwd)

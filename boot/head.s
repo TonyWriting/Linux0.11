@@ -114,7 +114,7 @@ setup_gdt:
  * more than 16MB will have to expand this.
  * 设定支持的最大物理内存长度为 16MB，但是只有 2MB 完全也能运行 Linux 0.11系统。
  */
-.org 0x1000
+.org 0x1000 // .org 的作用是设置后面的程序地址。pg0 应该是第一个页表的起始地址，即 4KB 处
 pg0:
 
 .org 0x2000
@@ -198,25 +198,29 @@ ignore_int:
  * won't guarantee that's all :-( )
  */
 .align 2
+// 设置页目录项和 4 个页表初值，故总共有 4 MB，足够放内核程序了。线性地址和虚拟地址是恒等映射
 setup_paging:
 	movl $1024*5,%ecx		/* 5 pages - pg_dir+4 page tables */
-	xorl %eax,%eax
+	xorl %eax,%eax // 自己做异或，即清零
 	xorl %edi,%edi			/* pg_dir is at 0x000 */
 	cld;rep;stosl
-	movl $pg0+7,pg_dir		/* set present bit/user r/w */
+	movl $pg0+7,pg_dir		/* set present bit/user r/w */ // pg_dir 就是页目录表的起始地址，即物理地址 0 处，这里是更新 4 个页目录项
 	movl $pg1+7,pg_dir+4		/*  --------- " " --------- */
 	movl $pg2+7,pg_dir+8		/*  --------- " " --------- */
 	movl $pg3+7,pg_dir+12		/*  --------- " " --------- */
-	movl $pg3+4092,%edi
-	movl $0xfff007,%eax		/*  16Mb - 4096 + 7 (r/w user,p) */
-	std
+	// 下面 6 行填写 4 个页表中所有项的内容，共有 4 * 1024 = 4096 项
+    // 每项的内容为该项映射的物理内存（高 20 位）+ 3 个标志位
+    // 从最后一个页表的最后一项倒序填写，最后一项额位置为 1023 * 4 = 4092
+    movl $pg3+4092,%edi
+	movl $0xfff007,%eax		/*  16Mb - 4096 + 7 (r/w user,p) */ // 最后一项对应的物理页内存地址为 0xfff000
+	std // 方向位置位，edi 递减（4 字节）
 1:	stosl			/* fill pages backwards - more efficient :-) */
-	subl $0x1000,%eax
+	subl $0x1000,%eax // 每填好一项，物理内存值减 0x1000
 	jge 1b
-	xorl %eax,%eax		/* pg_dir is at 0x0000 */
-	movl %eax,%cr3		/* cr3 - page directory start */
+	xorl %eax,%eax		/* pg_dir is at 0x0000 */ // eax 清零
+	movl %eax,%cr3		/* cr3 - page directory start */ // cr3 指向页目录表，页目录表在物理地址零处
 	movl %cr0,%eax
-	orl $0x80000000,%eax
+	orl $0x80000000,%eax // orl 是按位或，cr0 的 PG 标志为 1 表明开启分页，它在位 31 处
 	movl %eax,%cr0		/* set paging (PG) bit */
 	ret			/* this also flushes prefetch-queue */
 

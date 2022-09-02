@@ -97,11 +97,11 @@ system_call:
 	call sys_call_table(,%eax,4) // 该函数会修改 eax，作为返回值。为什么会将 eax 作为返回值呢？这是因为该函数为 C 函数（即使不是，它里面也会调用 C 函数，比如 sys_fork），编译器会生成相应汇编代码，即自动帮你做了
 	pushl %eax // 将 sys_xxx 内核函数的返回值压栈
 	movl current,%eax // current 是指向当前任务 task_struct 的指针，全局变量，将它赋给 eax
-	cmpl $0,state(%eax)		# state，0 代表进程为阻塞，则会调度
+	cmpl $0,state(%eax)		# state，非 0 代表进程为阻塞，则会调度
 	jne reschedule
 	cmpl $0,counter(%eax)		# counter，0 代表进程的时间片用光，也会引起调度
 	je reschedule # 不满足条件（该行的条件是当前任务的 counter 为 0)，会顺序往下执行
-ret_from_sys_call:
+ret_from_sys_call: // 除了 system_call 可能会走到这里，其他中断处理函数
 	movl current,%eax		# task[0] cannot have signals
 	cmpl task,%eax
 	je 3f
@@ -113,9 +113,9 @@ ret_from_sys_call:
 	movl blocked(%eax),%ecx # 取屏蔽位图到 ecx
 	notl %ecx # 按位取反
 	andl %ebx,%ecx # 对 ebx 和 ecx 进行与运算
-	bsfl %ecx,%ecx # 从低位开始扫描，看是否有 1 的位。如果有则 ecx 保留该位的偏移量（0 - 31)
+	bsfl %ecx,%ecx # 从低位开始扫描，看是否有 1 的位。如果有则 ecx 保留该位的偏移量（0 - 31)。即只处理最低位的那个信号类型
 	je 3f
-	btrl %ecx,%ebx # 将 ebx 中偏移量为 ecx 的位清零
+	btrl %ecx,%ebx # 将 ebx 中偏移量为 ecx 的位清零（因为接下来会处理该信号，即将 ecx 信号类型作为参数传递给 do_signal）
 	movl %ebx,signal(%eax)
 	incl %ecx # 由于信号类型从 1 开始，因此要将 ecx 中的偏移量加 1
 	pushl %ecx # 将 ecx 作为入参传递给 do_signal

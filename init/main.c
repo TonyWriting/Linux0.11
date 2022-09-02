@@ -96,9 +96,9 @@ static void time_init(void)
 	startup_time = kernel_mktime(&time);
 }
 
-static long memory_end = 0;
-static long buffer_memory_end = 0;
-static long main_memory_start = 0;
+static long memory_end = 0; // 物理内存总字节数
+static long buffer_memory_end = 0; // 高速缓存末端地址
+static long main_memory_start = 0; // 主内存开始地址
 
 struct drive_info { char dummy[32]; } drive_info;
 
@@ -111,18 +111,18 @@ void main(void)		/* This really IS void, no error here. */
  */
  	ROOT_DEV = ORIG_ROOT_DEV;
  	drive_info = DRIVE_INFO;
-	memory_end = (1<<20) + (EXT_MEM_K<<10); // 开始内存初始化
-	memory_end &= 0xfffff000;
+	memory_end = (1<<20) + (EXT_MEM_K<<10); // 内存大小为 1MB + 扩展内存（固定的？）
+	memory_end &= 0xfffff000; // 对 4KB 向下取整
 	if (memory_end > 16*1024*1024)
-		memory_end = 16*1024*1024;
+		memory_end = 16*1024*1024; // 看来 Linux0.11 的物理内存的典型值是 16Mb
 	if (memory_end > 12*1024*1024) 
 		buffer_memory_end = 4*1024*1024;
 	else if (memory_end > 6*1024*1024)
 		buffer_memory_end = 2*1024*1024;
 	else
 		buffer_memory_end = 1*1024*1024;
-	main_memory_start = buffer_memory_end;
-#ifdef RAMDISK
+	main_memory_start = buffer_memory_end; // 主内存开始地址等于高速缓冲区末端
+#ifdef RAMDISK // 如果定义了虚拟盘，主内存区就从虚拟盘末端地址开始，否则从高速缓冲区末端开始
 	main_memory_start += rd_init(main_memory_start, RAMDISK*1024);
 #endif
 	mem_init(main_memory_start,memory_end);
@@ -138,7 +138,7 @@ void main(void)		/* This really IS void, no error here. */
 	sti(); // 开中断（在此之前中断一直是关闭的）
 	move_to_user_mode();  // 切换到用户模式，之后就是用户态的任务 0 了。它访问内核也要经过系统调用
 	if (!fork()) {		/* we count on this going ok */ // 用户态的进程 0 立刻 fork 出 1 号进程（init 进程）
-		init(); /* */
+		init(); /* 如果是进程 1， fork() 返回 0，故会调用 init() */
 	}
 /*
  *   NOTE!!   For any other task 'pause()' would mean we have to get a

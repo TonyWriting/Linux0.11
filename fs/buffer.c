@@ -40,7 +40,7 @@ static inline void wait_on_buffer(struct buffer_head * bh)
 {
 	cli();
 	while (bh->b_lock) /* b_lock 相当于信号量。wake_up() 会唤醒隐式链表中的全部进程，所以需要用 while 来重新判断它们被唤醒后是否可以继续运行 */
-		sleep_on(&bh->b_wait); /* b_wait 是阻塞队列的队首指针（一重指针）*/
+		sleep_on(&bh->b_wait); /* b_wait 是阻塞队列的队首指针（一重指针），所以 & 之后就是二重指针 */
 	sti();
 }
 
