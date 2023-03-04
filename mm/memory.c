@@ -218,6 +218,21 @@ unsigned long put_page(unsigned long page,unsigned long address)
 	return page;
 }
 
+void increase_mem_map(unsigned long page)
+{
+	page -= LOW_MEM;
+	page >>= 12;
+	mem_map[page]++;
+}
+
+void decrease_mem_map(unsigned long page)
+{
+	page -= LOW_MEM;
+	page >>= 12;
+	mem_map[page]--;
+}
+
+
 void un_wp_page(unsigned long * table_entry)
 {
 	unsigned long old_page,new_page;
