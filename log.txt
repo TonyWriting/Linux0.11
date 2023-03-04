@@ -1,0 +1,121 @@
+open buffer.txt success
+producer, pid: 8, buffer index: 0, data: 0
+producer, pid: 8, buffer index: 1, data: 1
+producer, pid: 8, buffer index: 2, data: 2
+producer, pid: 8, buffer index: 3, data: 3
+producer, pid: 8, buffer index: 4, data: 4
+producer, pid: 8, buffer index: 5, data: 5
+producer, pid: 8, buffer index: 6, data: 6
+producer, pid: 8, buffer index: 7, data: 7
+producer, pid: 8, buffer index: 8, data: 8
+producer, pid: 8, buffer index: 9, data: 9
+consumer 3, pid: 11, buffer index: 9, data: 0
+consumer 3, pid: 11, buffer index: 8, data: 1
+consumer 3, pid: 11, buffer index: 7, data: 2
+consumer 3, pid: 11, buffer index: 6, data: 3
+consumer 3, pid: 11, buffer index: 5, data: 4
+consumer 3, pid: 11, buffer index: 4, data: 5
+consumer 3, pid: 11, buffer index: 3, data: 6
+consumer 3, pid: 11, buffer index: 2, data: 7
+consumer 3, pid: 11, buffer index: 1, data: 8
+consumer 3, pid: 11, buffer index: 0, data: 9
+producer, pid: 8, buffer index: 0, data: 10
+producer, pid: 8, buffer index: 1, data: 11
+producer, pid: 8, buffer index: 2, data: 12
+producer, pid: 8, buffer index: 3, data: 13
+producer, pid: 8, buffer index: 4, data: 14
+producer, pid: 8, buffer index: 5, data: 15
+producer, pid: 8, buffer index: 6, data: 16
+producer, pid: 8, buffer index: 7, data: 17
+producer, pid: 8, buffer index: 8, data: 18
+producer, pid: 8, buffer index: 9, data: 19
+consumer 1, pid: 9, buffer index: 9, data: 10
+consumer 1, pid: 9, buffer index: 8, data: 11
+consumer 1, pid: 9, buffer index: 7, data: 12
+consumer 1, pid: 9, buffer index: 6, data: 13
+consumer 1, pid: 9, buffer index: 5, data: 14
+consumer 1, pid: 9, buffer index: 4, data: 15
+consumer 1, pid: 9, buffer index: 3, data: 16
+consumer 1, pid: 9, buffer index: 2, data: 17
+consumer 1, pid: 9, buffer index: 1, data: 18
+consumer 1, pid: 9, buffer index: 0, data: 19
+producer, pid: 8, buffer index: 0, data: 20
+producer, pid: 8, buffer index: 1, data: 21
+producer, pid: 8, buffer index: 2, data: 22
+producer, pid: 8, buffer index: 3, data: 23
+producer, pid: 8, buffer index: 4, data: 24
+producer, pid: 8, buffer index: 5, data: 25
+producer, pid: 8, buffer index: 6, data: 26
+producer, pid: 8, buffer index: 7, data: 27
+producer, pid: 8, buffer index: 8, data: 28
+producer, pid: 8, buffer index: 9, data: 29
+consumer 3, pid: 11, buffer index: 9, data: 20
+consumer 3, pid: 11, buffer index: 8, data: 21
+consumer 3, pid: 11, buffer index: 7, data: 22
+consumer 3, pid: 11, buffer index: 6, data: 23
+consumer 3, pid: 11, buffer index: 5, data: 24
+consumer 3, pid: 11, buffer index: 4, data: 25
+consumer 3, pid: 11, buffer index: 3, data: 26
+consumer 3, pid: 11, buffer index: 2, data: 27
+consumer 3, pid: 11, buffer index: 1, data: 28
+consumer 3, pid: 11, buffer index: 0, data: 29
+producer, pid: 8, buffer index: 0, data: 30
+producer, pid: 8, buffer index: 1, data: 31
+producer, pid: 8, buffer index: 2, data: 32
+producer, pid: 8, buffer index: 3, data: 33
+producer, pid: 8, buffer index: 4, data: 34
+producer, pid: 8, buffer index: 5, data: 35
+producer, pid: 8, buffer index: 6, data: 36
+producer, pid: 8, buffer index: 7, data: 37
+producer, pid: 8, buffer index: 8, data: 38
+producer, pid: 8, buffer index: 9, data: 39
+consumer 1, pid: 9, buffer index: 9, data: 30
+consumer 1, pid: 9, buffer index: 8, data: 31
+consumer 1, pid: 9, buffer index: 7, data: 32
+consumer 1, pid: 9, buffer index: 6, data: 33
+consumer 1, pid: 9, buffer index: 5, data: 34
+consumer 1, pid: 9, buffer index: 4, data: 35
+consumer 1, pid: 9, buffer index: 3, data: 36
+consumer 1, pid: 9, buffer index: 2, data: 37
+consumer 1, pid: 9, buffer index: 1, data: 38
+consumer 1, pid: 9, buffer index: 0, data: 39
+producer, pid: 8, buffer index: 0, data: 40
+producer, pid: 8, buffer index: 1, data: 41
+producer, pid: 8, buffer index: 2, data: 42
+producer, pid: 8, buffer index: 3, data: 43
+producer, pid: 8, buffer index: 4, data: 44
+producer, pid: 8, buffer index: 5, data: 45
+producer, pid: 8, buffer index: 6, data: 46
+producer, pid: 8, buffer index: 7, data: 47
+producer, pid: 8, buffer index: 8, data: 48
+producer, pid: 8, buffer index: 9, data: 49
+consumer 2, pid: 10, buffer index: 9, data: 40
+consumer 2, pid: 10, buffer index: 8, data: 41
+consumer 2, pid: 10, buffer index: 7, data: 42
+consumer 2, pid: 10, buffer index: 6, data: 43
+consumer 2, pid: 10, buffer index: 5, data: 44
+consumer 2, pid: 10, buffer index: 4, data: 45
+consumer 2, pid: 10, buffer index: 3, data: 46
+consumer 2, pid: 10, buffer index: 2, data: 47
+consumer 2, pid: 10, buffer index: 1, data: 48
+consumer 2, pid: 10, buffer index: 0, data: 49
+producer, pid: 8, buffer index: 0, data: 50
+producer, pid: 8, buffer index: 1, data: 51
+producer, pid: 8, buffer index: 2, data: 52
+producer, pid: 8, buffer index: 3, data: 53
+producer, pid: 8, buffer index: 4, data: 54
+producer, pid: 8, buffer index: 5, data: 55
+producer, pid: 8, buffer index: 6, data: 56
+producer, pid: 8, buffer index: 7, data: 57
+producer, pid: 8, buffer index: 8, data: 58
+producer, pid: 8, buffer index: 9, data: 59
+consumer 2, pid: 10, buffer index: 9, data: 50
+consumer 2, pid: 10, buffer index: 8, data: 51
+consumer 2, pid: 10, buffer index: 7, data: 52
+consumer 2, pid: 10, buffer index: 6, data: 53
+consumer 2, pid: 10, buffer index: 5, data: 54
+consumer 2, pid: 10, buffer index: 4, data: 55
+consumer 2, pid: 10, buffer index: 3, data: 56
+consumer 2, pid: 10, buffer index: 2, data: 57
+consumer 2, pid: 10, buffer index: 1, data: 58
+consumer 2, pid: 10, buffer index: 0, data: 59
