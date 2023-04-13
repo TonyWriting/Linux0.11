@@ -74,4 +74,7 @@ void con_write(struct tty_struct * tty);
 
 void copy_to_cooked(struct tty_struct * tty);
 
+extern int switch_show_char_flag;
+void press_f12_handle(void);
+
 #endif

@@ -48,6 +48,8 @@
 #define O_NLRET(tty)	_O_FLAG((tty),ONLRET)
 #define O_LCUC(tty)	_O_FLAG((tty),OLCUC)
 
+int switch_show_char_flag = 0;
+
 struct tty_struct tty_table[] = {
 	{
 		{ICRNL,		/* change incoming CR to NL */
@@ -101,6 +103,18 @@ struct tty_queue * table_list[]={
 	&tty_table[1].read_q, &tty_table[1].write_q,
 	&tty_table[2].read_q, &tty_table[2].write_q
 	};
+
+void press_f12_handle(void)
+{
+	if (switch_show_char_flag == 0)
+	{
+		switch_show_char_flag = 1;
+	}
+	else if (switch_show_char_flag == 1)
+	{
+		switch_show_char_flag = 0;
+	}
+}
 
 void tty_init(void)
 {
