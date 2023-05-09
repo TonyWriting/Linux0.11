@@ -174,7 +174,7 @@ main() -> sched_init() -> set_system_gate() -> _set_gate()
 
 `sys_call_table[__NR__write * 4] == sys_write ` 。乘以 4 是因为在 32 位模式中，函数的入口地址为 32 位，`__NR__write * 4 `是入口的地址字节。 
 
-### 作业参考
+### 实验参考
 
 [参考这个提交](https://github.com/NaChen95/Linux0.11/commit/caf3ae0e30bb2a0e58b7bcb79ebe7bf930940402)。
 
@@ -558,7 +558,7 @@ int do_exit(long code)
 
 时间片设置过大，那么其他进程的等待时间会变长；时间片设置过小，那么进程调度次数/耗时（这是一种内耗）变大。因此时间片不宜过小或过大，应合理设置。
 
-### 作业参考
+### 实验参考
 
 本实验的作业可参考[该提交](https://github.com/NaChen95/Linux0.11/commit/595556a2a8500cf1610bb3b4019d0f09b68f9235)。注意在退出 Bochs 模拟器前，需要先在 Linux 0.11 shell 中执行 `exit`，这样 `process.c` 中的进程的状态信息才会输出到日志中。另外提供的 `stat_log.py` 使用的是 Python2 语法，如果要在 Python3 环境运行，需要进行[转换](https://dev.to/rohitnishad613/convert-python-2-to-python-3-in-1-single-click-2a8p)。
 
@@ -992,9 +992,9 @@ first_return_from_kernel:
 
 可见，基于 TSS 切换的进程创建中，子进程如果第一次被调度，那么子进程会直接执行用户态的代码（因为这时硬件会自动将保存在 TSS 段的用户态的 CS 和 EIP 弹出到相应寄存器中）；但在本节的方式中，子进程如果第一次被调度，那么它还是会先在内核中跑，将内核栈保存的用户态寄存器信息弹出后再回到用户态。
 
-### 作业参考
+### 实验参考
 
-本实验的作业可参考[这个提交](https://github.com/NaChen95/Linux0.11/commit/fd8fa5f875051721ae7ccda3b403945c36fe891e)。
+参考[这个提交](https://github.com/NaChen95/Linux0.11/commit/fd8fa5f875051721ae7ccda3b403945c36fe891e)。
 
 ### 实验报告
 
@@ -1367,6 +1367,160 @@ void *sys_shmat(int shmid)
 }
 ```
 
-### 作业参考
+### 实验参考
 
 参考[这个提交](https://github.com/NaChen95/Linux0.11/commit/f2bc091c75504d7b736fdc78177e13d150a66ef6)。除了信号量和共享内存，还增加了一个系统调用 [`get_jiffies`](https://github.com/NaChen95/Linux0.11/commit/fb29004fd027fddcef16353bfdb086a20f253c47#diff-f0650daa46b3094cc95addf8c615b82435874446cde5d6992a777e66a1e86667) 获取系统已走过的时钟中断数来判断信号量是否工作正常。从 [`producer.log`](https://github.com/NaChen95/Linux0.11/commit/f2bc091c75504d7b736fdc78177e13d150a66ef6#diff-3d94a1bf04c5a7891471bc11e98c55e805f349d1157f1f74ed44fa40cf8a7a41)  和 [`consumer.log`](https://github.com/NaChen95/Linux0.11/commit/f2bc091c75504d7b736fdc78177e13d150a66ef6#diff-403c58c34bb897c68559d697a052245a4fb794f7bbb8f71714755709062b750e) 可以看出，生产者进程和消费者进程实现了同步。
+
+## 实验七 终端设备的控制
+
+### 实验内容
+
+本实验的基本内容是修改 Linux 0.11 的终端设备处理代码，对键盘输入和字符显示进行非常规的控制。
+
+在初始状态，一切如常。用户按一次 F12 后，把应用程序向终端输出所有字母都替换为 `*`。用户再按一次 F12，又恢复正常。第三次按 F12，再进行输出替换。依此类推。以 `ls` 命令为例，正常情况：
+
+```shell
+# ls
+hello.c hello.o hello
+```
+
+第一次按 F12，然后输入 ls：
+
+```shell
+# **
+*****.* *****.* *****
+```
+
+第二次按 F12，然后输入 ls：
+
+```shell
+# ls
+hello.c hello.o hello
+```
+
+### 原理分析
+
+Linux0.11 外设有两类：块设备和字符设备。块设备将信息存储在大小（Linux0.11 为 1KB）固定的块中，能被随机访问，比如硬盘；字符设备则按照字符流的方式被顺序访问，例如鼠标、键盘、显示器、串口。如李治军老师所说，理解外设管理，要理解三部分：
+
+- 最终触发外设读写的是通过 `out` 往外设控制器的端口（x86 为独立编址）发送指令；
+- 理解其中的中断过程；
+- 理解如何利用了缓冲区和等待队列。
+
+#### 进程读取磁盘过程
+
+##### 定位文件的磁盘数据块位置
+
+读取文件前需要先 `sys_open` ，它一方面将 `task_struct` 中的 `flip[NR_OPEN]` 和 `file_table[NR_FILE]` 绑定，另一方面将 `file_table[NR_FILE]` 和 `inode_table[NR_INODE]` 绑定，从而通过文件路径名，能找到相应的 inode 节点（存放文件的元信息，比如文件大小，创建时间以及所在块号），数据结构如下下：
+
+```c
+// 代码路径：inculde/linux/fs.h
+#define NR_OPEN 20
+#define NR_INODE 32
+#define NR_FILE 64
+...
+struct file {
+	unsigned short f_mode; // 文件操作模式
+	unsigned short f_flags; // 文件打开，控制标志
+	unsigned short f_count; // 文件句柄数
+	struct m_inode * f_inode; // 指向文件对应的 inode 节点
+	off_t f_pos; // 当前文件读写位置指针
+};
+
+// 代码路径：inculde/linux/sched.h
+struct task_struct {
+	...
+	struct file * filp[NR_OPEN];
+	...
+};
+
+// 代码路径：fs/file_table.c
+struct file file_table[NR_FILE];
+
+// 代码路径：inculde/linux/fs.h
+struct m_inode {
+	unsigned short i_mode; // 各种标记位，读写执行等，我们 ls 时看到的
+	unsigned short i_uid; // 文件的用户 id
+	unsigned long i_size; // 文件大小
+	unsigned long i_mtime;
+	unsigned char i_gid; // 文件的用户组 id
+	unsigned char i_nlinks; // 文件入度，即有多少个目录指向它
+	unsigned short i_zone[9];  // 文件内容对应的硬盘数据块号
+/* these are in memory also */ // 在内存中使用的字段
+	struct task_struct * i_wait; // 等待该 inode 节点的进程队列
+	unsigned long i_atime; // 文件被访问就会修改这个字段
+	unsigned long i_ctime; // 修改文件内容和属性就会修改这个字段
+	unsigned short i_dev; // inode所属的设备号
+	unsigned short i_num; // 该结构引用的 inode 在硬盘里的序号
+	unsigned short i_count; // 多少个进程在使用这个 inode
+	unsigned char i_lock; // 互斥锁（用于多进程访问磁盘）
+	unsigned char i_dirt; // inode 内容是否被修改过
+	unsigned char i_pipe; // 是不是管道文件
+	unsigned char i_mount; // 该节点是否挂载了另外的文件系统
+	unsigned char i_seek;
+	unsigned char i_update;
+};
+```
+
+文件描述符 `fd` 是在 `flip[NR_OPEN]` 数组中的偏移量，由于建立了上述的两级映射关系，有了文件描述符就能找到相应文件的硬盘数据块的位置。
+
+##### 将硬盘数据块读入内核缓冲区数据块
+
+内核缓冲区的作用是提高文件操作的效率。可能会有人有疑问，没有缓冲区，是从进程用户态空间直接到磁盘，有了缓冲区则是先从进程用户态空间到内核缓冲区，然后再是磁盘，明明增加了一次拷贝为什么会更快？因为访问内存速度比访问硬盘快两个数量级，进程 A 在某个时刻执行一段程序，过段时间后可能还是相同数据块的程序（程序的空间局部性）；又或者是进程 B 也要执行相同程序，这都能利用缓冲区，而不是花上百倍时间从硬盘读取。缓冲块和硬盘数据块是一一对应关系，Linux 0.11 中大小都为 1KB。
+
+表面上只调用了 `bread`（block read） ，但其中发生了许多事情：
+
+- 在内核缓冲区找相应设备号，硬盘数据块号的缓冲块，如果有现成已和硬盘数据块同步的，则直接返回（不用执行后面步骤），否则申请一块缓冲块；
+- 将申请的缓冲块加锁，保护这个数据块在解锁前不会被其他进程操作；
+- 为申请的缓冲块构造请求项（存放要操作的磁头、扇区、柱面等），如果请求项队列为空，那么将请求项置为当前请求项 `dev->current_request` ，并调用请求项处理函数 `do_hd_request` 来处理它。如果请求项队列不空，则将它按照电梯算法（磁头移动距离最小）插入到请求项队列中；
+- `outb_p` 往磁盘控制器的端口发送指令，并设置中断服务程序，然后返回 `bread` 中将该进程睡眠（通过内核栈形成链式结构）；
+- 过了很久，硬盘控制器将一个扇区的数据从硬盘读入到硬盘控制器的缓冲区（注意它区别于内核缓冲区，它依然属于外设）后，触发硬盘中断，进入中断服务程序；
+- 硬盘中断服务程序将磁盘控制器缓冲区的数据块拷贝到内核缓冲块，然后判断数据是否读完，如果否则退出；如果是则唤醒睡眠的进程（由于是内核栈，所以后睡眠的先被唤醒），并调用 `do_hd_request` 处理下一个请求项（如果请求项队列为空则直接返回），这样就实现了处理请求项队里的循环操作。
+
+##### 将内核缓冲区数据块拷贝到进程用户态空间
+
+这部分很简单，通过 `put_fs_byte` 一个字节一个字节的完成拷贝。
+
+#### 键盘中断处理过程
+
+每个终端设备都对应一个 `tty_struct` 数据结构：
+
+```c
+#define TTY_BUF_SIZE 1024
+
+struct tty_struct {
+	struct termios termios;
+	int pgrp;
+	int stopped;
+	void (*write)(struct tty_struct * tty); /* tty 写函数指针 */
+	struct tty_queue read_q; /* tty 读队列 */
+	struct tty_queue write_q; /* tty 写队列 */
+	struct tty_queue secondary; /* tty 辅助队列 */
+	};
+
+struct tty_queue {
+	unsigned long data; // tty 队列缓冲区当前数据的统计值
+	unsigned long head; // 缓冲区中数据头指针
+	unsigned long tail; // 缓冲区中数据尾指针
+	struct task_struct * proc_list; // 等待本缓冲区的进程列表
+	char buf[TTY_BUF_SIZE]; // 缓冲区数据
+};
+
+```
+
+tty 是 teletype terminal 的缩写，代指终端设备（字符设备）。`read_q` 用来临时存放从键盘或串行终端输入的原始（Raw）字符序列，`write_q` 用来存放写到控制台显示屏或串行终端的字符序列，辅助队列 `secondary` 用来存放从 `read_q` 中取出的经过行规则模式程序处理过后的数据，称为熟（cooked）模式数据。这是在行规则程序将原始数据中的特殊字符如删除字符变换后的规范输入数据。上层终端函数 `tty_read` 即用于读取 `secondary` 队列的字符。 
+
+当用户在键盘键入了一个字符时，会引起键盘中断响应，中断处理汇编程序会从键盘控制器的端口读取（`inb`）键盘扫描码，然后将其译成相应字符，放入 `read_q` 中，然后调用 C 函数 `do_tty_interrupt`，它有直接调用行规则函数 `copy_to_cooked` 对该字符过滤处理，放入 `secondary` 中，同时放入写队列 `write_q`，并调用写控制台函数 `con_write`，即回显。`con_write` 中通过 out 将队列的字符写入显示器的端口中。
+
+### 实验参考
+
+参考[这个提交](https://github.com/NaChen95/Linux0.11/compare/master...Experiment7_terminal_device_control)。
+
+### 实验报告
+
+- 在原始代码中，按下 F12，中断响应后，中断服务程序会调用 `func` ？它实现的是什么功能？
+
+是的。键盘终端处理程序入口点为 [keyboard_interrupt](https://github.com/NaChen95/Linux0.11/blob/c5355bb4b8d57b53384c802e9b106d560e6046cd/kernel/chr_drv/keyboard.S#L37)，它根据键盘扫描码调用 [key_table](https://github.com/NaChen95/Linux0.11/blob/c5355bb4b8d57b53384c802e9b106d560e6046cd/kernel/chr_drv/keyboard.S#L53) 不同的函数。对于 F12，为 `func`。它实现的功能是将功能键转换为特殊字符，比如 F1 为 `esc[[A`，F2 为 `esc[[B`。
+
+- 在你的实现中，是否把向文件输出的字符也过滤了？如果是，那么怎么能只过滤向终端输出的字符？如果不是，那么怎么能把向文件输出的字符也一并进行过滤？
+
+没有。只过滤向终端输出的字符是通过 `con_write` 函数的修改来实现的。过滤向文件输出的字符则通过修改`file_write` 函数来实现。
