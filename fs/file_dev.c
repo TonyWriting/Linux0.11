@@ -21,20 +21,20 @@ int file_read(struct m_inode * inode, struct file * filp, char * buf, int count)
 
 	if ((left=count)<=0)
 		return 0;
-	while (left) {
-		if ((nr = bmap(inode,(filp->f_pos)/BLOCK_SIZE))) {
+	while (left) { // 每次循环，最多将一个 block 的数据复制到用户空间 buf
+		if ((nr = bmap(inode,(filp->f_pos)/BLOCK_SIZE))) { /* nr 为 i_zone[] 中的逻辑块（block）号 */
 			if (!(bh=bread(inode->i_dev,nr)))
 				break;
 		} else
 			bh = NULL;
-		nr = filp->f_pos % BLOCK_SIZE;
-		chars = MIN( BLOCK_SIZE-nr , left );
+		nr = filp->f_pos % BLOCK_SIZE; // 此时 nr 变为文件读写指针在逻辑块中的偏移量
+		chars = MIN( BLOCK_SIZE-nr , left ); // 该 block 可读的字节数为 BLOCK_SIZE-nr
 		filp->f_pos += chars;
 		left -= chars;
 		if (bh) {
 			char * p = nr + bh->b_data;
 			while (chars-->0)
-				put_fs_byte(*(p++),buf++);
+				put_fs_byte(*(p++),buf++); // 将 chars 字节的数据从内核缓冲区复制到用户空间 buf
 			brelse(bh);
 		} else {
 			while (chars-->0)

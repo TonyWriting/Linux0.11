@@ -142,7 +142,7 @@ int sys_open(const char * filename,int flag,int mode)
 	int i,fd;
 
 	mode &= 0777 & ~current->umask;
-	for(fd=0 ; fd<NR_OPEN ; fd++)
+	for(fd=0 ; fd<NR_OPEN ; fd++) /* 在当前进程的 PCB 中找到空闲的 flip 项 */
 		if (!current->filp[fd])
 			break;
 	if (fd>=NR_OPEN)
@@ -150,11 +150,12 @@ int sys_open(const char * filename,int flag,int mode)
 	current->close_on_exec &= ~(1<<fd);
 	f=0+file_table;
 	for (i=0 ; i<NR_FILE ; i++,f++)
-		if (!f->f_count) break;
+		if (!f->f_count) break; /* 在 file_table 中找空闲项 */
 	if (i>=NR_FILE)
 		return -EINVAL;
-	(current->filp[fd]=f)->f_count++;
-	if ((i=open_namei(filename,flag,mode,&inode))<0) {
+	(current->filp[fd]=f)->f_count++; /* 将 file_table 中的空闲项与 flip 中的空闲项关联 */
+	if ((i=open_namei(filename,flag,mode,&
+	))<0) {
 		current->filp[fd]=NULL;
 		f->f_count=0;
 		return i;
@@ -187,7 +188,7 @@ int sys_open(const char * filename,int flag,int mode)
 
 int sys_creat(const char * pathname, int mode)
 {
-	return sys_open(pathname, O_CREAT | O_TRUNC, mode);
+	return sys_open(pathname, O_CREAT | O_TRUNC, mode); // 置位 O_CREAT 和 O_TRUNC
 }
 
 int sys_close(unsigned int fd)

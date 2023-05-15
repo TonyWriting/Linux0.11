@@ -93,7 +93,7 @@ void rd_load(void)
 	if (s.s_magic != SUPER_MAGIC)
 		/* No ram disk image present, assume normal floppy boot */
 		return;
-	nblocks = s.s_nzones << s.s_log_zone_size;
+	nblocks = s.s_nzones << s.s_log_zone_size; /* 算出虚拟盘的块数 */
 	if (nblocks > (rd_length >> BLOCK_SIZE_BITS)) {
 		printk("Ram disk image too big!  (%d blocks, %d avail)\n", 
 			nblocks, rd_length >> BLOCK_SIZE_BITS);
@@ -102,7 +102,7 @@ void rd_load(void)
 	printk("Loading %d bytes into ram disk... 0000k", 
 		nblocks << BLOCK_SIZE_BITS);
 	cp = rd_start;
-	while (nblocks) {
+	while (nblocks) { /* 将软盘上准备格式化用的根文件系统复制到虚拟盘上 */
 		if (nblocks > 2) 
 			bh = breada(ROOT_DEV, block, block+1, block+2, -1);
 		else

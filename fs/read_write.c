@@ -74,7 +74,7 @@ int sys_read(unsigned int fd,char * buf,int count)
 			count = inode->i_size - file->f_pos;
 		if (count<=0)
 			return 0;
-		return file_read(inode,file,buf,count);
+		return file_read(inode,file,buf,count); /* 返回读取的字节数 */
 	}
 	printk("(Read)inode->i_mode=%06o\n\r",inode->i_mode);
 	return -EINVAL;

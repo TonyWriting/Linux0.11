@@ -17,6 +17,7 @@ struct stat {
 	time_t	st_ctime;
 };
 
+/* 以 0 开头的数字是八进制数 */
 #define S_IFMT  00170000
 #define S_IFREG  0100000
 #define S_IFBLK  0060000

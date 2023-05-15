@@ -53,7 +53,7 @@ void buffer_init(long buffer_end);
 #endif
 
 #define INODES_PER_BLOCK ((BLOCK_SIZE)/(sizeof (struct d_inode)))
-#define DIR_ENTRIES_PER_BLOCK ((BLOCK_SIZE)/(sizeof (struct dir_entry)))
+#define DIR_ENTRIES_PER_BLOCK ((BLOCK_SIZE)/(sizeof (struct dir_entry))) /* 每个 block 有多少个目录项 */
 
 #define PIPE_HEAD(inode) ((inode).i_zone[0])
 #define PIPE_TAIL(inode) ((inode).i_zone[1])
@@ -154,6 +154,7 @@ struct d_super_block {
 	unsigned short s_magic;
 };
 
+/* 目录项结构体。inode 编号（指针）和它的文件名（注意目录本身也可以视为一种文件） */
 struct dir_entry {
 	unsigned short inode;
 	char name[NAME_LEN];

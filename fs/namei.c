@@ -104,7 +104,7 @@ static struct buffer_head * find_entry(struct m_inode ** dir,
 	if (namelen > NAME_LEN)
 		namelen = NAME_LEN;
 #endif
-	entries = (*dir)->i_size / (sizeof (struct dir_entry));
+	entries = (*dir)->i_size / (sizeof (struct dir_entry)); // 目录文件中有多少个目录项
 	*res_dir = NULL;
 	if (!namelen)
 		return NULL;
@@ -126,14 +126,15 @@ static struct buffer_head * find_entry(struct m_inode ** dir,
 	}
 	if (!(block = (*dir)->i_zone[0]))
 		return NULL;
-	if (!(bh = bread((*dir)->i_dev,block)))
+	if (!(bh = bread((*dir)->i_dev,block))) /* 读入目录项所在的逻辑块号 */
 		return NULL;
 	i = 0;
 	de = (struct dir_entry *) bh->b_data;
 	while (i < entries) {
-		if ((char *)de >= BLOCK_SIZE+bh->b_data) {
+		if ((char *)de >= BLOCK_SIZE+bh->b_data) { // 如果一个缓冲块搜索完，还是没有找到指定的目录项
 			brelse(bh);
 			bh = NULL;
+			// 就读入下一个缓冲块
 			if (!(block = bmap(*dir,i/DIR_ENTRIES_PER_BLOCK)) ||
 			    !(bh = bread((*dir)->i_dev,block))) {
 				i += DIR_ENTRIES_PER_BLOCK;
@@ -162,6 +163,7 @@ static struct buffer_head * find_entry(struct m_inode ** dir,
  * may not sleep between calling this and putting something into
  * the entry, as someone else might have used it while you slept.
  */
+ /* 向指定目录（的缓冲块）增加一个目录项 */
 static struct buffer_head * add_entry(struct m_inode * dir,
 	const char * name, int namelen, struct dir_entry ** res_dir)
 {
@@ -184,7 +186,7 @@ static struct buffer_head * add_entry(struct m_inode * dir,
 	if (!(bh = bread(dir->i_dev,block)))
 		return NULL;
 	i = 0;
-	de = (struct dir_entry *) bh->b_data;
+	de = (struct dir_entry *) bh->b_data; // 缓冲块的数据一个个目录项
 	while (1) {
 		if ((char *)de >= BLOCK_SIZE+bh->b_data) {
 			brelse(bh);
@@ -225,6 +227,7 @@ static struct buffer_head * add_entry(struct m_inode * dir,
  * Getdir traverses the pathname until it hits the topmost directory.
  * It returns NULL on failure.
  */
+ /* 返回一个路径的最底层的目录 i 节点。比如 /var/log/log1.txt 返回的是 /var/log/ 的 i 节点 */
 static struct m_inode * get_dir(const char * pathname)
 {
 	char c;
@@ -239,10 +242,10 @@ static struct m_inode * get_dir(const char * pathname)
 	if (!current->pwd || !current->pwd->i_count)
 		panic("No cwd inode");
 	if ((c=get_fs_byte(pathname))=='/') {
-		inode = current->root;
+		inode = current->root; // 以 '/' 开头，为绝对路径
 		pathname++;
 	} else if (c)
-		inode = current->pwd;
+		inode = current->pwd; // 相对路径
 	else
 		return NULL;	/* empty name is bad */
 	inode->i_count++;
@@ -256,8 +259,9 @@ static struct m_inode * get_dir(const char * pathname)
 			/* nothing */ ;
 		if (!c)
 			return inode;
+			// 通过目录文件的 i 节点和目录项信息，获取目录项
 		if (!(bh = find_entry(&inode,thisname,namelen,&de))) {
-			iput(inode);
+			iput(inode); // 如果在目录中找不到对应的目录项，则释放 i 节点
 			return NULL;
 		}
 		inr = de->inode;
@@ -285,6 +289,7 @@ static struct m_inode * dir_namei(const char * pathname,
 	if (!(dir = get_dir(pathname)))
 		return NULL;
 	basename = pathname;
+	/* 遍历结束后，pathname 指向字符串末端的 '/0'，basename 指向最后一个 '/' */
 	while ((c=get_fs_byte(pathname++)))
 		if (c=='/')
 			basename=pathname;
@@ -408,7 +413,7 @@ int open_namei(const char * pathname, int flag, int mode,
 	*res_inode = inode;
 	return 0;
 }
-
+/* 系统调用：创建一个特殊（设备）文件或普通文件节点 */
 int sys_mknod(const char * filename, int mode, int dev)
 {
 	const char * basename;
@@ -419,7 +424,7 @@ int sys_mknod(const char * filename, int mode, int dev)
 	
 	if (!suser())
 		return -EPERM;
-	if (!(dir = dir_namei(filename,&namelen,&basename)))
+	if (!(dir = dir_namei(filename,&namelen,&basename))) /* dir 为顶层目录的 i 节点 */
 		return -ENOENT;
 	if (!namelen) {
 		iput(dir);

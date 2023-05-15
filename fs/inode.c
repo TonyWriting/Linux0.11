@@ -146,7 +146,8 @@ int create_block(struct m_inode * inode, int block)
 {
 	return _bmap(inode,block,1);
 }
-		
+
+/* 释放一个 i 节点 */
 void iput(struct m_inode * inode)
 {
 	if (!inode)
@@ -168,7 +169,7 @@ void iput(struct m_inode * inode)
 		inode->i_count--;
 		return;
 	}
-	if (S_ISBLK(inode->i_mode)) {
+	if (S_ISBLK(inode->i_mode)) { /* 如果是块设备文件的 i 节点，此时逻辑块字段 0 为 设备号，则刷新该设备 */
 		sync_dev(inode->i_zone[0]);
 		wait_on_inode(inode);
 	}
@@ -212,7 +213,7 @@ struct m_inode * get_empty_inode(void)
 			for (i=0 ; i<NR_INODE ; i++)
 				printk("%04x: %6d\t",inode_table[i].i_dev,
 					inode_table[i].i_num);
-			panic("No free inodes in mem");
+			panic("No free inodes in mem"); /* 如果没有空闲项，则打印 inode_table 并死机 */
 		}
 		wait_on_inode(inode);
 		while (inode->i_dirt) {
@@ -241,15 +242,16 @@ struct m_inode * get_pipe_inode(void)
 	return inode;
 }
 
+// 从目录项提供的 i 节点编号和设备号得到 i 节点
 struct m_inode * iget(int dev,int nr)
 {
 	struct m_inode * inode, * empty;
 
 	if (!dev)
 		panic("iget with dev==0");
-	empty = get_empty_inode();
+	empty = get_empty_inode(); /* 在 inode_table 中获取空闲项 */
 	inode = inode_table;
-	while (inode < NR_INODE+inode_table) {
+	while (inode < NR_INODE+inode_table) { /* 在 inode_table 中，检测指定的 i 节点是否已经加载过了 */
 		if (inode->i_dev != dev || inode->i_num != nr) {
 			inode++;
 			continue;
@@ -260,11 +262,11 @@ struct m_inode * iget(int dev,int nr)
 			continue;
 		}
 		inode->i_count++;
-		if (inode->i_mount) {
+		if (inode->i_mount) { /* 如果该 i 节点上安装了文件系统 */
 			int i;
 
 			for (i = 0 ; i<NR_SUPER ; i++)
-				if (super_block[i].s_imount==inode)
+				if (super_block[i].s_imount==inode) /* 找到该文件系统的超级块 */
 					break;
 			if (i >= NR_SUPER) {
 				printk("Mounted inode hasn't got sb\n");
@@ -273,13 +275,13 @@ struct m_inode * iget(int dev,int nr)
 				return inode;
 			}
 			iput(inode);
-			dev = super_block[i].s_dev;
-			nr = ROOT_INO;
-			inode = inode_table;
+			dev = super_block[i].s_dev; /* 通过超级块找到设备号 */
+			nr = ROOT_INO; /* 外设的根目录的 i 节点编号，从 1 开始计 */
+			inode = inode_table; /* 重置 inode，重新开始找 */
 			continue;
 		}
-		if (empty)
-			iput(empty);
+		if (empty) /* 如果 i 节点已在 inode_table 中 */
+			iput(empty); /* 释放临时申请的空闲节点 */
 		return inode;
 	}
 	if (!empty)
