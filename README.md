@@ -2,17 +2,26 @@
 
 ## 前言
 
-**TODO**
+我一直认为：LeetCode、八股文和系统设计只是短期提升面试水平的捷径；而想要走的更远，需要持续地学习名校的经典课程和**实验**，对于非科班的同学更是如此。操作系统涵盖方方面面，许多应用层的设计思想（如多进/线/协程、并发、异步、缓冲）都能在操作系统中找到参照。
 
-## 参考资料
+[哈工大李老师的操作系统课程](https://www.bilibili.com/video/BV19r4y1b7Aw?p=1)对于进程、内存的教学清晰流畅，并且十分注重代码和实验，并非需要背的文科式的概念堆砌，据说是国内最好的操作系统课程之一（国内另一门[南京大学蒋老师](https://space.bilibili.com/202224425/channel/collectiondetail?sid=192498)的课程也十分不错）。它采用的是实际工业界的 Linux 0.11，约两万行，而 Linux 2.6 代码量在千万行级别，相较之下容易掌握。但 Linux 0.11 和 Bochs 硬件模拟器可能也稍显陈旧，并不是为了教学而设计的，实验过程中也有一些避不开的晦涩难懂的代码，但它们对理解操作系统并没有太大帮助。MIT 的 [6.S081](https://pdos.csail.mit.edu/6.828/2021/schedule.html) 则专门设计了一个教学使用的操作系统 [xv6](https://pdos.csail.mit.edu/6.828/2021/xv6/book-riscv-rev2.pdf)，英语较好的同学可以选择学习它。
 
-**TODO**
+对于已经工作的同学，个人建议在学操作系统时要考虑投入产出比。对于核心代码（比如系统调用，进程创建与切换）值得投入大量甚至无限的时间精力，但对于其他部分，不一定要弄懂每一行，只要知道这个函数是在做什么就足够了（有时候还可以猜测它在做什么），战线不宜过长。对于实验也是类似，不必追求从零独立完成。首先只看完视频是根本没法做实验的，至少还需要认真阅读《Linux 内核完全注释》、《Linux 内核设计的艺术》和 Linux 0.11 源码的相应部分。阅读完后可能会有大概的思路，但是到写具体代码时还是难以下手。这时可以看实验参考，底线是理解实验参考的每行代码。
+
+## 学习材料
+
+- [哈工大操作系统视频](https://www.bilibili.com/video/BV19r4y1b7Aw/?p=1&vd_source=683a01bdc1972c35f5b27445f6fa8ccd)
+- [《Linux 内核完全注释》](https://book.douban.com/subject/1231236//)，官方教材，百科全书式的指导书
+- [《Linux 内核设计的艺术》](https://book.douban.com/subject/24708145/)，也是权威严谨的书籍，图解丰富，从学生角度出发，读起来连贯不跳跃
+- [《品读 Linux 0.11 核心代码》](https://github.com/dibingfa/flash-linux0.11-talk)，浅显易懂，小白都能看懂
+- 实验楼的[《操作系统原理与实践》](https://www.lanqiao.cn/courses/115)，官方实验平台
+- GitHub [Wangzhike/HIT-Linux-0.11](https://github.com/Wangzhike/HIT-Linux-0.11)，实验记录与讲解
 
 ## 环境搭建
 
 ### 开发环境
 
-我曾尝试用 WSL，解决了一个个问题，最终还是发现 Windows 和 Linux 0.11 的文件系统难以兼容，从而无法与 Linux 0.11 交换文件（现在可能有解决方案，比如 WSL2，但估计也很麻烦）。所以最终转向了[阿里云](https://www.aliyun.com/activity/ambassador/share-gift/goods?taskCode=xfyh2107&recordId=757672&userCode=i5mn5r7m)，选择了其中最便宜的轻量应用服务器，原生 Ubuntu 操作系统，新用户一年仅几十元。
+我曾尝试用 [WSL](https://learn.microsoft.com/en-us/windows/wsl/install)，解决了不少环境问题，但最终还是发现 Windows 和 Linux 0.11 的文件系统难以兼容，从而无法与 Linux 0.11 交换文件（现在可能有解决方案，比如 WSL2，但估计也较麻烦）。所以最终转向了[阿里云](https://www.aliyun.com/activity/ambassador/share-gift/goods?taskCode=xfyh2107&recordId=757672&userCode=i5mn5r7m)，选择了其中最便宜的轻量应用服务器，原生 Ubuntu 操作系统，新用户一年仅几十元。
 
 除了做本实验外，拥有一台个人云服务器好处多多，比如用于开发[个人博客网站](https://nachen95.github.io/)，不受地点限制可以随时从某一台个人 PC 机通过 SSH 连接上去。我正是用 VSCode 通过 [SSH](https://code.visualstudio.com/docs/remote/ssh) 连接（可以通过 [SSH keys](https://code.visualstudio.com/docs/remote/troubleshooting#_improving-your-security-with-a-dedicated-key) 免密登录）到云服务器查看、编辑其中的 Linux 0.11 的代码。
 
@@ -55,15 +64,15 @@
 
 ### 原理分析
 
-刚开机上电时，内存 RAM 里空空如也。在磁盘中虽然有操作系统程序，但 CPU 只能从内存里取指令执行，因此需要先将操作系统从磁盘搬运到内存中，并做好相关的初始化。搬运是由操作系统里的 `bootsect.s` 做的。
+刚开机上电时，内存 RAM 里空空如也。在磁盘中虽然有操作系统程序，但 CPU 只能从内存里取指令执行，因此操作系统需要先将自己从磁盘搬运到内存中（即自举），并做好相关的初始化。搬运是由操作系统里的 `bootsect.s` 做的。
 
-刚开机上电时，80x86 CPU 从硬件层面将 CS 置为 0xf000，IP 置为 0xfff0，因此 CS:IP 指向的物理地址为（16位实模式）0xffff0，这是 BIOS 程序的起始地址。BIOS 程序是固化在 ROM 里，掉电不会丢失，即这部分地址是映射到 ROM 里的。它的作用是对硬件做检查，并设置中断向量和中断服务程序供后面使用，最后硬件触发一个 int 0x19 中断将磁盘的第一个扇区（512B，即 `bootsect` 程序）加载到内存 0x07c00 处并跳转到这里执行。
+刚开机上电时，80x86 CPU 从硬件层面将 CS 置为 0xf000，IP 置为 0xfff0，因此 CS:IP 指向的物理地址为（16位实模式）0xffff0，这是 BIOS 程序的起始地址。BIOS 程序是固化在 ROM 里，掉电不会丢失，即这部分地址是映射到 ROM 里的。它的作用是对硬件做检查，并设置中断向量和中断服务程序供后面使用，最后硬件触发由 BIOS 设置好的 int 0x19 中断，它将磁盘的第一个扇区（512B，即 `bootsect` 程序）加载到内存 0x07c00 处并跳转到这里执行。
 
 引导加载程序 `bootsect` 程序将操作系统的其余部分通过 BIOS 设置的中断服务全部读入内存中。包括 `setup.s` 程序和 `system` 模块。`system` 模块的头部是 `head.s` 程序，它也是为操作系统引导服务的。
 
-`setup.s` 作用是利用 BIOS 设置的中断服务读取机器数据，比如光标位置，磁盘参数，根设备号，供后面的系统初始化使用。然后将 `system` 模块移动到物理地址 0 处，并开启了 32 位保护模式（为此临时设置了 GDT 表）。最后通过 `jumpi 0, 8` 跳转到物理地址 0 处即 `head.s`。
+`setup.s` 作用是利用 BIOS 设置的中断服务读取机器数据，比如光标位置，磁盘参数，根设备号，供后面的系统初始化使用。然后它将 `system` 模块移动到物理地址 0 处，并开启了 32 位保护模式（为此临时设置了 GDT 表）。最后通过 `jumpi 0, 8` （这是个 32 位地址，8 是段选择子）跳转到物理地址 0 处即 `head.s`。
 
-`head.s` 重新设置了 GDT 表，并设置了页目录表和供内核使用的 4 个页表开启分页，共映射 16 MB 空间（当时软盘的物理内存为这个级别）。这 16 MB 空间的线性地址和物理地址是完全一致的，又由于内核代码段基址为 0，因此在内核代码中的逻辑地址即为物理地址。注意页目录表和页表是放在物理地址 0 处，这相当于 `head.s` 废弃了自己。最后通过将 `main` 压栈和 `ret` 跳转到 `main` 执行。
+`head.s` 重新设置了 GDT 表，并设置了页目录表和供内核使用的 4 个页表开启分页，共映射 16 MB 内存空间（当时软盘的物理内存大小为这个级别）。这 16 MB 空间的线性地址和物理地址是完全一致的，又由于内核代码段基址为 0，因此在内核代码中的逻辑地址即为物理地址，这给内核代码的编写带来方便（例如，内核函数 [free_page](https://github.com/NaChen95/Linux0.11/blob/05d5343b1569e797e4075f7c1340a42dddaee628/mm/memory.c#LL89C23-L89C23) 释放物理页，其入参 `addr` 既是逻辑地址，又是物理地址） 。注意页目录表和页表是放在物理地址 0 处，这相当于 `head.s` 废弃了自己。最后通过将 `main` 压栈和 `ret` 从汇编代码跳转到 C 语言的 `main` 执行。
 
 ### 实验参考
 
@@ -125,7 +134,7 @@ gcc -o testlab2 testlab2.c
 
 系统调用的本质是中断，因为调用内核段的函数不能像用户段那样简单直接的函数调用，否则会有安全问题（比如某个用户程序读取修改了 root 的密码），即使它们都处于你买的同一个内存条中。
 
-以大家熟悉的 C 语言库函数 `printf` 为例，系统调用的路径依次为：
+以 C 语言库函数 `printf` 为例，系统调用的路径依次为：
 
 - `printf`
 - `int 0x80`
@@ -137,7 +146,7 @@ gcc -o testlab2 testlab2.c
 
 （1）`printf` -> `int 0x80`
 
-`printf` 是 C 运行库提供的 API。这是因为如果让用户程序直接调用 `int 0x80`，那么不同平台的可移植性不好（Windows 系统调用的中断向量号是 `0x2e` 而不是 `0x80`），同时也比较复杂，于是运行库充当了中间层。从而不同硬件平台都可以通过 `printf` 进行打印，对用户程序屏蔽了硬件差异。
+`printf` 是 C 运行库提供的 API。这是因为如果让用户程序直接调用 `int 0x80`，那么不同平台的可移植性不好（例如Windows 系统调用的中断向量号是 `0x2e` 而不是 `0x80`），同时也比较复杂，于是运行库充当了中间层。从而不同硬件平台都可以通过 `printf` API 进行打印，对用户程序屏蔽了硬件差异。
 
 C 语言的 API 可以通过宏展开或者手写嵌入汇编来调用 `int 0x80`。比如 `printf` 会调用宏 `_syscall3`：
 
@@ -158,13 +167,13 @@ return -1; \
 
 关于 C 语言中嵌入汇编的语法可以参考《Linux 内核完全注释》的 3.3.2 节。这里不对上面每行做具体解释，仅介绍其功能。但如果想要理解操作系统，上面每行代码的含义都应该完全掌握。
 
-`_syscall3` 有 3 个入参，它们分别通过 EBX，ECX 和 EDX 寄存器传递进入 `int 0x80` 中。同时还会将 `__NR__##name` 通过 EAX 寄存器传入内核中。在 `printf` 中，`__NR__##name` 会拼接为 `__NR__write`。`__NR__write` 是系统调用号，代表着内核态函数 `sys_write` 在函数指针数组 `sys_call_table` 的偏移。处理完中断返回后，会通过 EAX 寄存器将结果返回到用户态变量 `__res` 中。从代码可以看出，`__res` 代表中断处理是否成功，如果它大于等于 `0` 代表成功；否则失败，此时会将它的相反数赋给全局变量 `errno` 中，最后返回 `-1`。
+`_syscall3` 有 3 个入参，它们分别通过 EBX，ECX 和 EDX 寄存器传递进入 `int 0x80` 中。同时还会将 `__NR__##name` 通过 EAX 寄存器传入内核中。在 `printf` 中，`__NR__##name` 会拼接为 `__NR__write`。`__NR__write` 是系统调用号，代表着内核态函数 `sys_write` 在函数指针数组 `sys_call_table` 的下标号。处理完中断返回后，会通过 EAX 寄存器将结果返回到用户态变量 `__res` 中。从代码可以看出，`__res` 代表中断处理是否成功，如果它大于等于 `0` 代表成功；否则失败，此时会将它的相反数赋给全局变量 `errno` 中，最后返回 `-1`。
 
 （2）`int 0x80` -> `system_call`
 
 这里是系统调用的最关键之处，也是用户态和内核态发生改变的边界。在 CPU 执行 `int 0x80` 之前还是处于用户态，执行完跳转到 `system_call` 后就变成内核态了，在之后就是普通的函数调用了。
 
-那么这一步发生了什么呢？我们知道，CPU 的工作就是取址执行，当它看到 `int 0x80` 指令，就会根据中断向量 0x80 ，在中断向量描述符表 IDT 中找到相应的门描述符，特权级检查通过后，就会跳转到相应的中断处理程序的入口地址。
+那么这一步发生了什么呢？我们知道，CPU 的工作就是取指令执行，当它看到 `int 0x80` 指令，就会根据中断向量 0x80 ，在中断向量描述符表 IDT 中找到相应的门描述符，特权级检查通过后，就会跳转到相应的中断处理程序的入口地址。
 
 注意在 32 位模式中，寻址是通过段选择子指定的段描述符中的段基址 + 段内偏移的机制（如果对此不了解请看《Linux 内核完全注释》的 4.3 节）。因此在 IDT 表中，存放的每一个表项（也称为门描述符）必须包括两个部分：（中断处理函数所在的）段选择子和段内偏移。除此之外，还会将 EFLAGS，CS 和 EIP 寄存器压栈，如果特权级发生了改变还会涉及栈切换。
 
@@ -254,7 +263,7 @@ return -1; \
 本次实验包括如下内容：
 
 - 基于模板 `process.c` 编写多进程的样本程序，实现如下功能：所有子进程都并行运行，每个子进程的实际运行时间一般不超过 30 秒； + 父进程向标准输出打印所有子进程的 id，并在所有子进程都退出后才退出；
-- 在 `Linux0.11` 上实现进程运行轨迹的跟踪。 基本任务是在内核中维护一个日志文件 `/var/process.log`，把从操作系统启动到系统关机过程中所有进程的运行轨迹都记录在这一 log 文件中。
+- 在 `Linux 0.11` 上实现进程运行轨迹的跟踪。 基本任务是在内核中维护一个日志文件 `/var/process.log`，把从操作系统启动到系统关机过程中所有进程的运行轨迹都记录在这一 log 文件中。
 - 在修改过的 0.11 上运行样本程序，通过分析 log 文件，统计该程序建立的所有进程的等待时间、完成时间（周转时间）和运行时间，然后计算平均等待时间，平均完成时间和吞吐量。可以自己编写统计程序，也可以使用 python 脚本程序—— `stat_log.py`（在 `/home/teacher/` 目录下） ——进行统计。
 - 修改 0.11 进程调度的时间片，然后再运行同样的样本程序，统计同样的时间数据，和原有的情况对比，体会不同时间片带来的差异。
 
@@ -583,7 +592,7 @@ int do_exit(long code)
 
 #### 多进程样本程序
 
-[process.c](https://github.com/NaChen95/Linux0.11/blob/Experiment3_process_tracking_and_statistics/homework/process.c) 只是在 [Wangzhike 仓库](https://github.com/Wangzhike/HIT-Linux-0.11/blob/master/3-processTrack/linux-0.11/process.c)的基础上加了少量注释和打印。
+[process.c](https://github.com/NaChen95/Linux0.11/blob/Experiment3_process_tracking_and_statistics/homework/process.c) 基于 [Wangzhike 仓库](https://github.com/Wangzhike/HIT-Linux-0.11/blob/master/3-processTrack/linux-0.11/process.c)的基础上加了少量注释和打印。
 
 #### 修改时间片
 
@@ -600,7 +609,7 @@ int do_exit(long code)
 
 ### 实验参考
 
-本实验的作业可参考[该提交](https://github.com/NaChen95/Linux0.11/commit/595556a2a8500cf1610bb3b4019d0f09b68f9235)。注意在退出 Bochs 模拟器前，需要先在 Linux 0.11 shell 中执行 `exit`，这样 `process.c` 中的进程的状态信息才会输出到日志中。另外提供的 `stat_log.py` 使用的是 Python2 语法，如果要在 Python3 环境运行，需要进行[转换](https://dev.to/rohitnishad613/convert-python-2-to-python-3-in-1-single-click-2a8p)。
+本实验的作业可参考[该提交](https://github.com/NaChen95/Linux0.11/commit/595556a2a8500cf1610bb3b4019d0f09b68f9235)。注意在退出 Bochs 模拟器前，需要先在 Linux 0.11 shell 中执行 `exit`，这样 `process.c` 中的进程的状态信息才会输出到日志中。另外注意提供的 `stat_log.py` 使用的是过时的 Python2 语法，如果要在 Python3 环境运行，需要进行[转换](https://dev.to/rohitnishad613/convert-python-2-to-python-3-in-1-single-click-2a8p)。
 
 ### 实验报告
 
@@ -946,7 +955,7 @@ int copy_process(
 
 - 是否还需要 TSS？
 
-  需要。因为虽然现在不是靠 TSS 做进程切换了，但是当进程进入内核时，还是要依赖 TSS 去找到内核栈，这是硬件提供的方法，也是要求。但是与之前不同，现在只需要一个 TSS 段，TR 寄存器永远指向该 TSS 段，进程切换不会改变 TR 寄存器，而是会改变该 TSS 段的 ESP0 的内容，将 ESP0 赋值为该进程 `task_struct` 相同的物理页的页顶。SS0 不用改是因为所有进程的 SS0 都是 `0x10`，即指向内核数据段。
+  需要。因为虽然现在不是靠 TSS 做进程切换了，但是当进程进入内核时，还是要依赖 TSS 去找到内核栈，这是硬件提供的方法，也是限制。但是与之前不同，现在可以只需要一个 TSS 段，TR 寄存器永远指向该 TSS 段，进程切换不会改变 TR 寄存器，而是会改变该 TSS 段的 ESP0 的内容，将 ESP0 赋值为该进程 `task_struct` 相同的物理页的页顶。SS0 不用改是因为所有进程的 SS0 都是 `0x10`，即指向内核数据段。
 
 - TSS 是否还需要是 `task_struct` 中的成员？
 
@@ -1096,7 +1105,7 @@ movl %ebx,ESP0(%ecx)
 ### 实验内容
 
 - 在 Ubuntu 下编写程序，用信号量解决生产者——消费者问题；
-- 在 0.11 中实现信号量，用生产者—消费者程序检验之。
+- 在 Linux 0.11 中实现信号量，用生产者—消费者程序检验之。
 
 ### 原理分析
 
@@ -1151,7 +1160,7 @@ int sys_sem_wait(semaphore *sem)
 
 - 增加了 `cli` 和 `sti` 。这是通过开关中断来确保对信号量的修改同时只有一个进程，形成**临界区**。对于单 CPU 适用，是比较简单的方法。但实际上，标准做法在 P 原子操作前后也需要临界区，只是这里将它们都放在了一个函数。
 
-- `if` 换成了 `while` 。这是因为直接调用了 Linux 0.11 原生的 `sleep_on` （Linux0.11 最难理解的函数之一），它通过**内核栈**形成了一个阻塞进程的**隐式链表**，所以这时我们不需要自己写一个阻塞队列了。这个隐式链表不是阻塞队列，而是阻塞栈。由此而来的副作用是必须将 `if` 换成 `while` ，因为根据 `sleep_on` 的实现，一旦唤醒了阻塞队列的头部进程，那么当它被调度时，会**自动地**唤醒下一个进程，从而最终堵塞队列的全部进程都会被唤醒。因此需要用 `while`，防止生产者只生产了一个资源而唤醒了所有等待的消费者。
+- `if` 换成了 `while` 。这是因为直接调用了 Linux 0.11 原生的 `sleep_on` （它可谓是 Linux 0.11 最难理解的函数之一），它通过**内核栈**形成了一个阻塞进程的**隐式链表（栈）**，所以这时我们不需要自己写一个阻塞队列了。这个隐式链表不是阻塞队列，而是阻塞栈。由此而来的副作用是必须将 `if` 换成 `while` ，因为根据 `sleep_on` 的实现，一旦唤醒了阻塞队列的头部进程，那么当它被调度时，会**自动地**唤醒下一个进程，从而最终堵塞队列的全部进程都会被唤醒。因此需要用 `while`，防止生产者只生产了一个资源而唤醒了所有等待的消费者。
 
 - 整形数字的顺序放在了下面。如果是下面的实现
 
@@ -1255,7 +1264,7 @@ sem_post(p_empty_buf);
 
 信号量的原理是容易理解的，但本实验的代码实现却不简单。难点有两个：
 
-- 没有自己实现阻塞队列，而套用了 Linux 0.11 （可能）最难理解的原生函数 `sleep_on` 。由此需要将 `if` 方式改为 `while` 方式以及其他一系列改动。
+- 没有自己实现阻塞队列，而套用了 Linux 0.11 最难理解的原生函数之一 `sleep_on` 。由此需要将 `if` 方式改为 `while` 方式以及其他一系列改动。
 - 用户态程序的文件操作利用 `lseek` 完成删除第一个数字。
 
 ### 挂载
@@ -1304,7 +1313,7 @@ shmaddr 和 shmflg 参数可忽略。
 
 首先是要得到全局变量的线性地址。在汇编中以 `ds:[eax]` 表示，后者是偏移量（即应用程序中 `&i` 的值），ds 是数据段选择子。它的段基址在哪里呢？在进程的 LDT 中。应用程序的 LDT 又在哪里呢？在 GDT 中。GDTR 寄存器存放 GDT 的物理地址，LDTR 寄存器存放当前进程的 LDT 的段选择子。注意 GDT 只是内存中的一个数据结构，而 LDT 是（专门存放段描述符的）一个段。从而找到了当前进程的 LDT 段基址，再由 ds 找到 LDT 中的数据段描述符，最终得到数据段段基址。数据段段基址加上偏移量等于线性地址。
 
-分段是 CPU 硬件层面提供的机制，但现代 32 位操作系统（无论是 Windows 还是 Linux）都会将段基址置为零，段限长为全空间 4GB （平坦模式）。64 位 CPU 甚至直接将段基址置为零（清晰地区分哪些是 CPU 引入的，哪些是操作系统引入的很重要）。因此可以说现代操作系统实际上没有使用分段机制，只有分页。为什么还要保留分段，可能是为了前向兼容：段的概念是起源于 8086，它是 16 位处理器，但是地址总线是 20 位。16 的位的寄存器如何能访问 20 位的地址？段基地址左移 4 位（就是乘16）再加上段内偏移就是 20 位的地址（这也是 Linux0.11 刚启动时进入的实模式）。
+分段是 CPU 硬件层面提供的机制，但现代 32 位操作系统（无论是 Windows 还是 Linux）都会将段基址置为零，段限长为全空间 4GB （平坦模式）。64 位 CPU 甚至直接将段基址置为零（清晰地区分哪些是 CPU 引入的，哪些是操作系统引入的很重要）。因此可以说现代操作系统实际上没有使用分段机制，只有分页。为什么还要保留分段，可能是为了前向兼容：段的概念是起源于 8086，它是 16 位处理器，但是地址总线是 20 位。16 的位的寄存器如何能访问 20 位的地址？段基地址左移 4 位（就是乘16）再加上段内偏移就是 20 位的地址（这也是 Linux 0.11 刚启动时进入的实模式）。
 
 ##### 分页
 
@@ -1440,7 +1449,7 @@ hello.c hello.o hello
 
 ### 原理分析
 
-Linux0.11 外设有两类：块设备和字符设备。块设备将信息存储在大小（Linux0.11 为 1KB）固定的块中，能被随机访问，比如硬盘；字符设备则按照字符流的方式被顺序访问，例如鼠标、键盘、显示器、串口。如李治军老师所说，理解外设管理，要理解三部分：
+Linux 0.11 外设有两类：块设备和字符设备。块设备将信息存储在大小（Linux 0.11 为 1KB）固定的块中，能被随机访问，比如硬盘；字符设备则按照字符流的方式被顺序访问，例如鼠标、键盘、显示器、串口。如李治军老师所说，理解外设管理，要理解三部分：
 
 - 最终触发外设读写的是通过 `out` 往外设控制器的端口（x86 为独立编址）发送指令；
 - 理解其中的中断过程；
@@ -1490,7 +1499,7 @@ struct m_inode {
 	unsigned long i_atime; // 文件被访问就会修改这个字段
 	unsigned long i_ctime; // 修改文件内容和属性就会修改这个字段
 	unsigned short i_dev; // inode所属的设备号
-	unsigned short i_num; // 该结构引用的 inode 在硬盘里的序号
+	unsigned short i_num; // inode 的编号，或者说 inode 指针
 	unsigned short i_count; // 多少个进程在使用这个 inode
 	unsigned char i_lock; // 互斥锁（用于多进程访问磁盘）
 	unsigned char i_dirt; // inode 内容是否被修改过
@@ -1514,7 +1523,7 @@ struct m_inode {
 - 为申请的缓冲块构造请求项（存放要操作的磁头、扇区、柱面等），如果请求项队列为空，那么将请求项置为当前请求项 `dev->current_request` ，并调用请求项处理函数 `do_hd_request` 来处理它。如果请求项队列不空，则将它按照电梯算法（磁头移动距离最小）插入到请求项队列中；
 - `outb_p` 往磁盘控制器的端口发送指令，并设置中断服务程序，然后返回 `bread` 中将该进程睡眠（通过内核栈形成链式结构）；
 - 过了很久，硬盘控制器将一个扇区的数据从硬盘读入到硬盘控制器的缓冲区（注意它区别于内核缓冲区，它依然属于外设）后，触发硬盘中断，进入中断服务程序；
-- 硬盘中断服务程序将磁盘控制器缓冲区的数据块拷贝到内核缓冲块，然后判断数据是否读完，如果否则退出；如果是则唤醒睡眠的进程（由于是内核栈，所以后睡眠的先被唤醒），并调用 `do_hd_request` 处理下一个请求项（如果请求项队列为空则直接返回），这样就实现了处理请求项队里的循环操作。
+- 硬盘中断服务程序将磁盘控制器缓冲区的数据块拷贝到内核缓冲块，然后判断数据是否读完，如果否则退出；如果是则唤醒睡眠的进程（由于是内核栈，所以后睡眠的先被唤醒），并调用 `do_hd_request` 处理下一个请求项（如果请求项队列为空则直接返回），这样就实现了处理请求项队列里的循环操作。
 
 ##### 将内核缓冲区数据块拷贝到进程用户态空间
 
@@ -1564,3 +1573,212 @@ tty 是 teletype terminal 的缩写，代指终端设备（字符设备）。`re
 - 在你的实现中，是否把向文件输出的字符也过滤了？如果是，那么怎么能只过滤向终端输出的字符？如果不是，那么怎么能把向文件输出的字符也一并进行过滤？
 
 没有。只过滤向终端输出的字符是通过 `con_write` 函数的修改来实现的。过滤向文件输出的字符则通过修改`file_write` 函数来实现。
+
+## 实验八 proc 文件系统的实现
+
+### 实验内容
+
+在 Linux 0.11 上实现 procfs（proc 文件系统）内的 psinfo 结点。当读取此结点的内容时，可得到系统当前所有进程的状态信息。例如，用 cat 命令显示 `/proc/psinfo` 的内容，可得到：
+
+```
+$ cat /proc/psinfo
+pid    state    father    counter    start_time
+0    1    -1    0    0
+1    1    0    28    1
+4    1    1    1    73
+3    1    1    27    63
+6    0    4    12    817
+```
+
+```
+$ cat /proc/hdinfo
+total_blocks:    62000;
+free_blocks:    39037;
+used_blocks:    22963;
+...
+```
+
+`procfs` 及其结点要在内核启动时自动创建。
+
+相关功能实现在 `fs/proc.c` 文件内。
+
+### 原理分析
+
+整个 Linux 0.11 的文件系统至少有五层抽象：
+
+1. 从磁盘的柱面、扇区和磁头到逻辑块（block）。
+2. 多个进程通过请求项形成阻塞队列读写数据块。
+3. 为了加速磁盘读写，引出内核缓冲块，它与请求项、数据块一一对应。
+4. 从逻辑块到文件，引出 inode 节点。
+5. 多个文件，目录组成目录树，形成文件系统：引导块、超级块、inode 节点位图、数据块位图、inode 块和数据块。
+
+实验七是为了理解上面的 1 到 3 层，而本实验是为了理解 4 到 5 层。
+
+根据实验指导，本实验通过 `sys_mkdir`创建了 `/proc` 目录，再通过 `sys_mknod` 新建一个设备文件的 inode 节点，它们的核心代码如下：
+
+```c
+#define NAME_LEN 14
+/* 目录项（注意区别页目录表中的目录项）数据结构，可见一个目录项大小为 16B */
+struct dir_entry {
+	unsigned short inode; /* inode 节点的编号（指针）*/
+	char name[NAME_LEN]; /* 文件名 */
+};
+
+/* sys_mknod 的核心代码 */
+/* 创建一个特殊文件或普通文件的 inode 节点 */
+int sys_mknod(const char * filename, int mode, int dev)
+{
+	const char * basename;
+	int namelen;
+	struct m_inode * dir, * inode;
+	struct buffer_head * bh;
+	struct dir_entry * de;
+	...
+    /* 返回 filename 路径所在目录的 inode 节点，赋值给 dir
+       例如，filename 为 /mnt/user/hello.txt，则 dir 为 /mnt/user 的 inode 节点，
+       basename 为 /hello.txt，namelen 为 hello.txt 的长度。
+    */
+	if (!(dir = dir_namei(filename,&namelen,&basename)))
+		return -ENOENT;
+	...
+    /* 在 dir 尝试找 basename 的目录项 */
+	bh = find_entry(&dir,basename,namelen,&de);
+	if (bh) { /* 如果找到了，说明 filename 已存在，返回出错码 */
+		brelse(bh);
+		iput(dir);
+		return -EEXIST;
+	}
+     /* 新建一个 inode 节点：找到空闲的 inode 节点，载入 inode_table[32] 中，更新 inode 位图 */
+	inode = new_inode(dir->i_dev);
+	if (!inode) {
+		iput(dir);
+		return -ENOSPC;
+	}
+	inode->i_mode = mode;
+	if (S_ISBLK(mode) || S_ISCHR(mode)) /* 对于块设备和字符设备，指针 0 为设备号 */
+		inode->i_zone[0] = dev;
+	inode->i_mtime = inode->i_atime = CURRENT_TIME; /* 更新 inode 的修改时间 */
+	inode->i_dirt = 1; /* inode 节点在内存改了，但是没有同步到硬盘的标志 */
+	bh = add_entry(dir,basename,namelen,&de); /* 在 dir 目录中新增一个目录项 */
+	if (!bh) { /* 新增失败，则释放 dir 的 inode 节点并退出 */
+		iput(dir);
+		inode->i_nlinks=0;
+		iput(inode);
+		return -ENOSPC;
+	}
+	de->inode = inode->i_num; /* 设置目录项的 inode 节点编号 */
+	bh->b_dirt = 1; /* 置位高速缓冲区已修改标志 */
+	iput(dir); /* 释放 dir 的 inode 节点 */
+	iput(inode); /* 释放 dir 的 inode 节点 */
+	brelse(bh); /* 释放高速缓冲区 */
+	return 0;
+}
+
+int sys_mkdir(const char * pathname, int mode)
+{
+	const char * basename;
+	int namelen;
+	struct m_inode * dir, * inode;
+	struct buffer_head * bh, *dir_block;
+	struct dir_entry * de;
+
+	...
+	if (!(dir = dir_namei(pathname,&namelen,&basename)))
+		return -ENOENT;
+	...
+	bh = find_entry(&dir,basename,namelen,&de);
+	if (bh) {
+		brelse(bh);
+		iput(dir);
+		return -EEXIST;
+	}
+	inode = new_inode(dir->i_dev);
+	if (!inode) {
+		iput(dir);
+		return -ENOSPC;
+	}
+     /* 目录 inode 节点对应的数据块存放目录项，一个目录项大小为 16B，有两个目录项 */
+	inode->i_size = 32;
+	inode->i_dirt = 1;
+	inode->i_mtime = inode->i_atime = CURRENT_TIME;
+    /* 新建一个数据块，用于存放 . 和 .. 两个目录项 */
+	if (!(inode->i_zone[0]=new_block(inode->i_dev))) {
+		iput(dir);
+		inode->i_nlinks--;
+		iput(inode);
+		return -ENOSPC;
+	}
+	inode->i_dirt = 1;
+	if (!(dir_block=bread(inode->i_dev,inode->i_zone[0]))) {
+		iput(dir);
+		free_block(inode->i_dev,inode->i_zone[0]);
+		inode->i_nlinks--;
+		iput(inode);
+		return -ERROR;
+	}
+	de = (struct dir_entry *) dir_block->b_data;/* 指向目录项数据块 */
+	de->inode=inode->i_num;
+	strcpy(de->name,"."); /* 设置当前目录的目录项 */
+	de++;
+	de->inode = dir->i_num;
+	strcpy(de->name,".."); /* 设置上级目录的目录项 */
+	inode->i_nlinks = 2; /* 新建目录的硬连接数为 2, 每多一个文件, i_nlinks 加1 */
+	dir_block->b_dirt = 1;
+	brelse(dir_block);
+	inode->i_mode = I_DIRECTORY | (mode & 0777 & ~current->umask);
+	inode->i_dirt = 1;
+	bh = add_entry(dir,basename,namelen,&de);
+	if (!bh) {
+		iput(dir);
+		free_block(inode->i_dev,inode->i_zone[0]);
+		inode->i_nlinks=0;
+		iput(inode);
+		return -ENOSPC;
+	}
+	de->inode = inode->i_num;
+	bh->b_dirt = 1;
+	dir->i_nlinks++;
+	dir->i_dirt = 1;
+	iput(dir);
+	iput(inode);
+	brelse(bh);
+	return 0;
+}
+```
+
+值得注意的是，cat 命令每次只会 `read` 512B：
+
+```c
+/* cat 命令的核心实现 */
+int main(int argc, char* argv[])
+{
+    char buf[513] = {'\0'};
+    int nread;
+
+    int fd = open(argv[1], O_RDONLY, 0);
+    while(nread = read(fd, buf, 512)) /* nread 为剩余字节数，当它为 0 时才退出循环 */
+    {
+        buf[nread] = '\0';
+        puts(buf);
+    }
+    return 0;
+}
+```
+
+如果进程数较多，需要打印的进程状态的字节数可能大于 512，那就要区分是两次不同的 cat，还是相同的 cat 但是不同的 `read` 。在 [proc.c](https://github.com/NaChen95/Linux0.11/commit/f3f1b41087921548c74566dfeabbbbdd6f1f5153#diff-b39b0987584da45443e0dc21ebd7d3a984dbf489ea622a7079013226a200898d) 中，每次都会将所有进程的状态存在全局数组 `k_buffer` 中（可能会超过 512B），而在拷贝到用户态数组 `buf` 时，拷贝字节数不会超过 512，通过文件指针 `pos` 来确定每次拷贝的起始位置。
+
+### 实验参考
+
+参考[这个提交](https://github.com/NaChen95/Linux0.11/commit/f3f1b41087921548c74566dfeabbbbdd6f1f5153)。
+
+### 实验报告
+
+完成实验后，在实验报告中回答如下问题：
+
+- 如果要求你在 `psinfo` 之外再实现另一个结点，具体内容自选，那么你会实现一个给出什么信息的结点？为什么？
+
+我会给出超级块的信息，因为里面有 inode 节点数，逻辑块数，inode 节点位图块数和逻辑块位图块数等磁盘的全局信息。
+
+- 一次 `read()` 未必能读出所有的数据，需要继续 `read()`，直到把数据读空为止。而数次 `read()` 之间，进程的状态可能会发生变化。你认为后几次 `read()` 传给用户的数据，应该是变化后的，还是变化前的？ + 如果是变化后的，那么用户得到的数据衔接部分是否会有混乱？如何防止混乱？ + 如果是变化前的，那么该在什么样的情况下更新 `psinfo` 的内容？
+
+[这种实现](https://github.com/NaChen95/Linux0.11/commit/f3f1b41087921548c74566dfeabbbbdd6f1f5153)是变化后的。会有混乱，因为拷贝到用户态数组 `buf` 时是按字节拷贝，而 `p->pid`，`p->state` 等是整型占据多个字节。如果两次 `read` 在一个整型数字之间且此时进程状态发生了变化，可能会导致混乱。一种解决方式是保证每次都输出完整的一行进程信息，向下取整。
