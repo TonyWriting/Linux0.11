@@ -11,7 +11,8 @@
 ## 学习材料
 
 - [哈工大操作系统视频](https://www.bilibili.com/video/BV19r4y1b7Aw/?p=1&vd_source=683a01bdc1972c35f5b27445f6fa8ccd)
-- [《Linux 内核完全注释》](https://book.douban.com/subject/1231236//)，官方教材，百科全书式的指导书
+- [《Linux 内核完全注释》](https://book.douban.com/subject/1231236//)，官方教材一，查漏补缺
+- [《操作系统原理、实现与实践》](https://book.douban.com/subject/30391722/)，官方教材二，李老师写的配套课程的教材
 - [《Linux 内核设计的艺术》](https://book.douban.com/subject/24708145/)，也是权威严谨的书籍，图解丰富，从学生角度出发，读起来连贯不跳跃
 - [《品读 Linux 0.11 核心代码》](https://github.com/dibingfa/flash-linux0.11-talk)，浅显易懂，小白都能看懂
 - 实验楼的[《操作系统原理与实践》](https://www.lanqiao.cn/courses/115)，官方实验平台
@@ -1547,7 +1548,7 @@ struct tty_struct {
 	};
 
 struct tty_queue {
-	unsigned long data; // tty 队列缓冲区当前数据的统计值
+	unsigned long data; // tty 队列缓冲区当前数据的字符行数
 	unsigned long head; // 缓冲区中数据头指针
 	unsigned long tail; // 缓冲区中数据尾指针
 	struct task_struct * proc_list; // 等待本缓冲区的进程列表
@@ -1556,9 +1557,106 @@ struct tty_queue {
 
 ```
 
-tty 是 teletype terminal 的缩写，代指终端设备（字符设备）。`read_q` 用来临时存放从键盘或串行终端输入的原始（Raw）字符序列，`write_q` 用来存放写到控制台显示屏或串行终端的字符序列，辅助队列 `secondary` 用来存放从 `read_q` 中取出的经过行规则模式程序处理过后的数据，称为熟（cooked）模式数据。这是在行规则程序将原始数据中的特殊字符如删除字符变换后的规范输入数据。上层终端函数 `tty_read` 即用于读取 `secondary` 队列的字符。 
+tty 是 teletype terminal 的缩写，代指终端设备（字符设备）。`read_q` 用来临时存放从键盘或串行终端输入的原始（Raw）字符序列，`write_q` 用来存放写到控制台显示屏或串行终端的字符序列，辅助队列 `secondary` 用来存放从 `read_q` 中取出的经过行规则模式程序处理过后的数据，称为熟（cooked）模式数据。这是在行规则程序将原始数据中的特殊字符如删除字符变换后的规范输入数据。`secondary` 队列的字符会被上层终端函数 `tty_read` 读取。
 
-当用户在键盘键入了一个字符时，会引起键盘中断响应，中断处理汇编程序会从键盘控制器的端口读取（`inb`）键盘扫描码，然后将其译成相应字符，放入 `read_q` 中，然后调用 C 函数 `do_tty_interrupt`，它有直接调用行规则函数 `copy_to_cooked` 对该字符过滤处理，放入 `secondary` 中，同时放入写队列 `write_q`，并调用写控制台函数 `con_write`，即回显。`con_write` 中通过 out 将队列的字符写入显示器的端口中。
+当用户在键盘键入了一个字符时，会引起键盘中断响应，中断处理汇编程序会从键盘控制器的端口读取（`inb`）键盘扫描码，然后将其译成相应字符，放入 `read_q` 中，然后调用 C 函数 `do_tty_interrupt`，它有直接调用行规则函数 `copy_to_cooked` 对该字符过滤处理，放入辅助队列中，同时放入写队列 `write_q`，并调用写控制台函数 `con_write`，即回显。`con_write` 中通过 out 将队列的字符写入显示器的端口中。
+
+放入辅助队列之后呢？之后就是唤醒在辅助队列等待的进程，然后该进程会将字符拷贝到自己的用户空间。实际上，键盘中断的最开始并不是用户在键盘键入字符，而是某个进程运行 `scanf` 后通过 `sleep_if_empty` 阻塞自己，然后用户键入字符后才会被唤醒。从进程 `scanf` 的流程为：
+
+```c
+// ------------ 进程文件视图 ------------
+// 1. scanf 最终会调用 sys_read(0, buf, count)，0 是标准输入的文件描述符。这是因为在 main 中，1 号进程打开的第一个文件是 /dev/tty0 设备文件。而其他的用户进程都是 1 fork 出来的，因为她们的 0 号描述符也都对应 /dev/tty0。/dev/tty0 的 inode 是在制造磁盘时弄好的。
+
+// 2. sys_read
+int sys_read(unsigned int fd,char * buf,int count)
+{
+	struct file * file;
+	struct m_inode * inode;
+    file=current->filp[fd]；
+	inode = file->f_inode;
+	if (S_ISCHR(inode->i_mode)) // 会走到这个分支
+		return rw_char(READ, inode->i_zone[0], buf, count, &file->f_pos); // inode->i_zone[0] 存放设备号
+}
+
+// 3. rw_char
+typedef int (*crw_ptr)(int rw,unsigned minor,char * buf,int count,off_t * pos);
+static crw_ptr crw_table[]={
+	NULL,		/* nodev */
+	rw_memory,	/* /dev/mem etc */
+	NULL,		/* /dev/fd */
+	NULL,		/* /dev/hd */
+	rw_ttyx,	/* /dev/ttyx */ // 串行终端，指通过系统串口接入的终端
+	rw_tty,		/* /dev/tty */ // 控制（台）终端，即显示器和键盘
+	NULL,		/* /dev/lp */
+	NULL};		/* unnamed pipes */
+int rw_char(int rw,int dev, char * buf, int count, off_t * pos)
+{
+	crw_ptr call_addr;
+
+	if (MAJOR(dev)>=NRDEVS)
+		return -ENODEV;
+	if (!(call_addr=crw_table[MAJOR(dev)])) /* call_addr 为函数指针，根据主设备号来确定设备类型，选择不同的处理函数，这里是 rw_tty */
+		return -ENODEV;
+	return call_addr(rw,MINOR(dev),buf,count,pos); /* MINOR(dev) 获得次设备号 */
+}
+// 设备号：Linux 0.11 将通过主设备号 + 次设备号来定位某一个设备。主设备号用来区分设备的类型，比如软驱设备（2）、硬盘设备（3）、ttyx 设备（4）。而次设备号用来区分同一类型的多个设备。
+
+// 4. rw_tty 和 rw_ttyx
+static int rw_ttyx(int rw,unsigned minor,char * buf,int count,off_t * pos) // 串口终端设备处理函数
+{
+	return ((rw==READ)?tty_read(minor,buf,count): // 最终调用 tty_read，minor 是次设备号
+		tty_write(minor,buf,count));
+}
+static int rw_tty(int rw,unsigned minor,char * buf,int count, off_t * pos) // 控制台终端读写函数
+{
+	if (current->tty<0)
+		return -EPERM;
+	return rw_ttyx(rw,current->tty,buf,count,pos);
+}
+
+// 5. tty_read
+static void sleep_if_empty(struct tty_queue * queue)
+{
+	cli();
+	while (!current->signal && EMPTY(*queue))
+		interruptible_sleep_on(&queue->proc_list);
+	sti();
+}
+
+int tty_read(unsigned channel, char * buf, int nr)
+{
+    struct tty_struct * tty;
+	char c, * b=buf;
+    tty = &tty_table[channel]; /* channel 为次设备号 */
+    ...
+    while (nr>0) { /* 当欲读取字符数大于零时 */
+    	/* 当辅助队列为空，或设置了规范模式标志且辅助队列字符数为零且空闲空间大于 20 时该进程阻塞。
+           规范和非规范模式的区别在于，前者会按照实际逻辑处理特殊字符，比如擦除字符会删除缓冲队列的上一个字符；
+           而非规范模式则将这些特殊字符都视为普通字符处理。Linux 0.11 应该主要工作在规范模式。
+        */
+		if (EMPTY(tty->secondary) || (L_CANON(tty) && !tty->secondary.data && LEFT(tty->secondary)>20)) {
+			sleep_if_empty(&tty->secondary); /* 本进程进入可中断睡眠状态，等待用户键盘输入 */
+			continue;
+		}
+		do {
+            /* 到这里时辅助队列必有字符可以取出，将它放在 c 中 */
+			GETCH(tty->secondary,c);
+            /* 如果是文件结束符或者换行符，表示取完一行字符，字符行数减一 */
+			if (c==EOF_CHAR(tty) || c==10) 
+				tty->secondary.data--;
+			/* 如果是文件结束符且为规范模式，则返回已读出字符 */
+			if (c==EOF_CHAR(tty) && L_CANON(tty))
+				return (b-buf);
+			else {
+            /* 否则将该字符拷贝到用户空间，并将欲读字符数减一 */
+				put_fs_byte(c,b++);
+				if (!--nr)
+					break;
+			}
+		} while (nr>0 && !EMPTY(tty->secondary));
+	...
+}
+```
 
 ### 实验参考
 
@@ -1655,7 +1753,7 @@ int sys_mknod(const char * filename, int mode, int dev)
 		return -ENOSPC;
 	}
 	inode->i_mode = mode;
-	if (S_ISBLK(mode) || S_ISCHR(mode)) /* 对于块设备和字符设备，指针 0 为设备号 */
+	if (S_ISBLK(mode) || S_ISCHR(mode)) /* 对于块设备和字符设备，i_zone[0] 为其设备号，注意这和普通文件不同 */
 		inode->i_zone[0] = dev;
 	inode->i_mtime = inode->i_atime = CURRENT_TIME; /* 更新 inode 的修改时间 */
 	inode->i_dirt = 1; /* inode 节点在内存改了，但是没有同步到硬盘的标志 */
